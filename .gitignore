@@ -1,0 +1,7 @@
+Setup.hs
+maestro.cabal
+.stack-work
+
+*~
+*.swp
+

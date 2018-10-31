@@ -1,0 +1,19 @@
+name: maestro
+version:             0.1.0.0
+synopsis:            A graphic show of the maestro theorem
+author:              Juan Miguel Vilar
+maintainer:          jvilar@uji.es
+
+dependencies:
+- base >= 4.7 && < 5
+
+executables:
+  maestro:
+    main:             maestro.hs
+    dependencies:
+    - diagrams-cairo
+    - diagrams-gtk
+    - diagrams-lib
+    - gtk
+    - mtl
+    - reactive-banana

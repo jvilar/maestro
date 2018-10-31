@@ -1,14 +1,13 @@
-{-# LANGUAGE ExistentialQuantification #-}
-
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 import Control.Applicative((<*>),(<$>))
-import Control.Monad(forM)
-import Diagrams.Backend.Cairo(Cairo)
+import Control.Monad(forM_, forM)
+import Control.Monad.Reader(liftIO)
+import Diagrams.Backend.Cairo(B, Cairo)
 import Diagrams.Backend.Gtk(defaultRender)
-import Diagrams.Prelude
+import Diagrams.Prelude hiding (set)
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.Gdk.GC
-import qualified Reactive.Banana as R
-import qualified Reactive.Banana.Frameworks as R
 import Text.Printf(printf)
 
 instances :: Double -> Int -> Int -> [(Int, Double)]
@@ -37,6 +36,16 @@ iniB = 2
 iniK = 1
 iniP = 0
 
+data GUIElements = GUIElements { ne :: Entry
+                               , ae :: Entry
+                               , be :: Entry
+                               , ke :: Entry
+                               , pe :: Entry
+                               , costLabel :: Label
+                               , canvas :: DrawingArea
+                               }
+
+
 main = do
          initGUI
          window <- windowNew
@@ -47,31 +56,29 @@ main = do
          box <- hBoxNew False 2
          containerAdd window box
 
-         let entries = [("n:", iniN), ("a:", iniA), ("b:", iniB), ("k:", iniK), ("p:", iniP)]
-             nrows = 2 + length entries
+         let entryData = [("n:", iniN), ("a:", iniA), ("b:", iniB), ("k:", iniK), ("p:", iniP)]
+             nrows = 2 + length entryData
          entryTable <- tableNew nrows 2 False
          boxPackStart box entryTable PackNatural 0
-         [ns, as, bs, ks, ps] <- forM (zip entries [0..]) (addEntry entryTable)
+         entries <- forM (zip entryData [0..]) (addEntry entryTable)
 
-         costLabel <- labelNew Nothing
-         tableAttach entryTable costLabel 0 2 (length entries) (length entries + 1) [] [] 2 2
+         cLabel <- labelNew (Nothing :: Maybe String)
+         tableAttach entryTable cLabel 0 2 (length entries) (length entries + 1) [] [] 2 2
 
-         canvas <- drawingAreaNew
-         boxPackStart box canvas PackGrow 1
-         widgetModifyBg canvas StateNormal (Color 65535 65535 65535)
+         cvs <- drawingAreaNew
+         boxPackStart box cvs PackGrow 1
+         widgetModifyBg cvs StateNormal (Color 65535 65535 65535)
 
-         network <- R.compile (createNetwork Inputs { aSource = as
-                                                    , bSource = bs
-                                                    , nSource = ns
-                                                    , kSource = ks
-                                                    , pSource = ps
-                                                    }
-                                             Actions { treatInstances = drawInstances canvas
-                                                     , writeCost = \a b k p -> labelSetText costLabel (cost a b k p)
-                                                     }
-                              )
-         R.actuate network
+         let elements = GUIElements { ne = entries !! 0
+                                    , ae = entries !! 1
+                                    , be = entries !! 2
+                                    , ke = entries !! 3
+                                    , pe = entries !! 4
+                                    , costLabel = cLabel
+                                    , canvas = cvs
+                                    }
 
+         forM_ entries $ setEntryKeyEvent elements
 
          quitButton <- buttonNewWithLabel "Quit"
          tableAttach entryTable quitButton 0 2 (nrows-1) nrows [Expand, Fill] [] 2 2
@@ -81,26 +88,7 @@ main = do
 
          mainGUI
 
-type EventSource a = (R.AddHandler a, a -> IO ())
-
-addHandler :: EventSource a -> R.AddHandler a
-addHandler = fst
-
-fire :: EventSource a -> a -> IO ()
-fire = snd
-
-data Inputs = Inputs { aSource :: EventSource Int
-                     , bSource :: EventSource Int
-                     , nSource :: EventSource Int
-                     , kSource :: EventSource Int
-                     , pSource :: EventSource Int
-                     }
-
-data Actions = Actions { treatInstances :: ([(Int, Double)], Int, Int) -> IO ()
-                       , writeCost :: Int -> Int -> Int -> Int -> IO ()
-                       }
-
-addEntry :: Table -> ((String, Int), Int) -> IO (EventSource Int)
+addEntry :: Table -> ((String, Int), Int) -> IO Entry
 addEntry tbl ((title, ini), row) = do
     label <- labelNew $ Just title
     miscSetAlignment label 0 0.5
@@ -109,23 +97,25 @@ addEntry tbl ((title, ini), row) = do
     entrySetText entry $ show ini
     widgetModifyBg entry StateNormal (Color 65535 65535 65535)
     tableAttach tbl entry 1 2 row (row+1) [Expand, Fill] [] 2 2
-    source <- R.newAddHandler
-    entry `on` keyReleaseEvent $ do
-        R.liftIO $ do
+    return entry
+
+setEntryKeyEvent :: GUIElements -> Entry -> IO ()
+setEntryKeyEvent elements entry = do
+    entry `on` keyReleaseEvent $ liftIO $ do
                     t <- entryGetText entry
-                    case reads t of
+                    case reads t :: [(Int, String)] of
                       [(n, "")] -> do
                                      widgetModifyBg entry StateNormal (Color 65535 65535 65535)
-                                     fire source n
+                                     updateGUI elements
                       _ -> widgetModifyBg entry StateNormal (Color 65535 0 0)
-        return True
-    return source
+                    return True
+    return ()
 
-diagramInstances :: [(Int, Double)] -> Diagram Cairo R2
+diagramInstances :: [(Int, Double)] -> Diagram B
 diagramInstances = cat (r2 (0, -1)) . map ruler
                    where ruler (n, l) = cat (r2 (1,0)) $ replicate n (rect l 1 # translate (r2 (l/2, -0.5))) # lc black # lwG 0.2
 
-diagramTimes :: [(Int, Double)] -> Int -> Int -> Diagram Cairo R2
+diagramTimes :: [(Int, Double)] -> Int -> Int -> Diagram B
 diagramTimes inst k p = cat (r2 (0, -1)) $ map ruler inst
     where ruler (n, l) = if k > 0
                          then let
@@ -136,8 +126,8 @@ diagramTimes inst k p = cat (r2 (0, -1)) $ map ruler inst
                               in cat (r2 (1,0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwG 0.2
 
 
-drawInstances :: DrawingArea -> ([(Int, Double)], Int, Int) -> IO ()
-drawInstances canvas (inst, k, p) = do
+drawInstances :: DrawingArea -> [(Int, Double)] -> Int -> Int -> IO ()
+drawInstances canvas inst k p = do
     clearCanvas canvas
     defaultRender canvas (diagramInstances inst
                           ===
@@ -154,22 +144,14 @@ clearCanvas canvas = do
     drawRectangle dr gc True 0 0 w h
 
 
-createNetwork :: forall t . R.Frameworks t => Inputs -> Actions -> R.Moment t ()
-createNetwork inputs actions = do
-    ea <- R.fromAddHandler (addHandler $ aSource inputs)
-    eb <- R.fromAddHandler (addHandler $ bSource inputs)
-    en <- R.fromAddHandler (addHandler $ nSource inputs)
-    ek <- R.fromAddHandler (addHandler $ kSource inputs)
-    ep <- R.fromAddHandler (addHandler $ pSource inputs)
-    let
-        ba = R.stepper iniA ea
-        bb = R.stepper iniB eb
-        bn = R.stepper iniN en
-        bk = R.stepper iniK ek
-        bp = R.stepper iniP ep
-        bpar = (\n a b k p -> (n, a, b, k, p)) <$> bn <*> ba <*> bb <*> bk <*> bp
-        binst = (\n a b k p -> (instances (fromIntegral n) a b, k, p)) <$> bn <*> ba <*> bb <*> bk <*> bp
-    eParChanged <- R.changes bpar
---    R.reactimate $ (\(n, a, b, k, p) -> treatInstances actions (instances (fromIntegral n) a b, k, p)) <$> eParChanged
---    R.reactimate $ (\(_, a, b, k, p) -> writeCost actions a b k p) <$> eParChanged
-    R.reactimate' $ ((\(_, a, b, k, p) -> writeCost actions a b k p) <$> ((,,,,) <$> en <*> ea <*> eb <*> ek <*> ep))
+updateGUI :: GUIElements -> IO ()
+updateGUI elements = do
+  a <- read <$> entryGetText ( ae elements )
+  b <- read <$> entryGetText ( be elements )
+  n <- read <$> entryGetText ( ne elements )
+  k <- read <$> entryGetText ( ke elements )
+  p <- read <$> entryGetText ( pe elements )
+
+  labelSetText (costLabel elements) $ cost a b k p
+  drawInstances (canvas elements) (instances n a b) k p
+
