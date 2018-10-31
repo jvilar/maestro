@@ -1,34 +1,124 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 import Control.Applicative((<*>),(<$>))
 import Control.Monad(forM_, forM)
 import Control.Monad.Reader(liftIO)
-import Diagrams.Backend.Cairo(B, Cairo)
+import Diagrams.Backend.Cairo(B)
 import Diagrams.Backend.Gtk(defaultRender)
 import Diagrams.Prelude hiding (set)
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.Gdk.GC
+import Graphics.SVGFonts
 import Text.Printf(printf)
 
 instances :: Double -> Int -> Int -> [(Int, Double)]
 instances size a b = takeWhile ((>=1/fromIntegral b).snd) $ iterate (\(n, s) -> (n*a, s/fromIntegral b)) (1, size)
 
+newtype Fix f = Fix { unfix :: f (Fix f) }
+
+data ExpressionF b = ValInt Int
+                   | ValDouble Double
+                   | Var String
+                   | Log b
+                   | LogBase b b
+                   | Exp b b
+                   | ExpLog b b
+                   | Prod b b deriving Functor
+
+type Expression = Fix ExpressionF
+
+fix2 :: (Expression -> Expression -> ExpressionF Expression)
+     -> Expression -> Expression -> Expression
+fix2 f a b = Fix $ f a b
+
+up :: (ExpressionF a -> a) -> Expression -> a
+up f = f . fmap (up f) . unfix
+
+mkValInt :: Int -> Expression
+mkValInt = Fix . ValInt
+
+mkValDouble :: Double -> Expression
+mkValDouble = Fix . ValDouble
+
+mkVar :: String -> Expression
+mkVar = Fix . Var
+
+mkLog :: Expression -> Expression
+mkLog = Fix . Log
+
+mkLogBase :: Expression -> Expression -> Expression
+mkLogBase = fix2 LogBase
+
+mkExp :: Expression -> Expression -> Expression
+mkExp = fix2 Exp
+
+mkExpLog :: Expression -> Expression -> Expression
+mkExpLog = fix2 ExpLog
+
+mkProd :: Expression -> Expression -> Expression
+mkProd = fix2 Prod
+
+textOptions :: Double -> IO (TextOpts Double)
+textOptions h = do
+  f <- lin
+  return $ TextOpts f INSIDE_H HADV False h 1
+
+myText :: String -> Diagram B
+myText = stroke . flip textSVG 1
+
+toDiagram :: Expression -> Diagram B
+toDiagram = up go
+  where go :: ExpressionF (Diagram B) -> Diagram B
+        go (ValInt n) = myText $ show n
+        go (ValDouble d) = myText $ show d
+        go (Var s) = myText s
+        go (Log d) = myText "log" ||| paren d
+        go (LogBase d1 d2) = myText "log" ||| subindex d1 ||| paren d2
+        go (Exp d1 d2) = d1 ||| exponent d2
+        go (ExpLog d1 d2) = myText "log" ||| exponent d2 ||| paren d1
+        go (Prod d1 d2) = d1 ||| sep ||| d2
+
+        exponent d = d # translateY 0.5 # reduce
+        subindex d = d # translateY (-0.4) # reduce
+        reduce = scale 0.8
+        sep = strut 0.2
+        paren e = myText "(" ||| e ||| myText ")"
+
+myLog :: Int -> Int -> Maybe Int
+myLog b v = case compare b v of
+              GT -> Nothing
+              EQ -> Just 1
+              LT -> if v `mod` b == 0
+                    then (1+) <$> myLog b (v `div` b)
+                    else Nothing
+
+simplify :: Expression -> Expression
+simplify = up go
+  where go :: ExpressionF Expression -> Expression
+        go (Exp e (Fix (ValInt 0))) = mkValInt 1
+        go (Exp e (Fix (ValInt 1))) = e
+        go (Exp (Fix (ValInt 1)) _) = mkValInt 1
+        go (Exp (Fix (Log b)) e) = mkExpLog b e
+        go (Prod (Fix (ValInt 1)) e) = e
+        go (Prod e (Fix (ValInt 1))) = e
+        go e@(LogBase (Fix (ValInt b)) (Fix (ValInt v))) = maybe (Fix e) mkValInt $ myLog b v
+        go e = Fix e
+
+
+cost :: Int -> Int -> Int -> Int -> Expression
+cost a b k p | a < b ^ k = mkProd nk $ mkExp logn (mkValInt p)
+             | a == b ^ k = mkProd nk $ mkExp logn (mkValInt (p+1))
+             | otherwise = mkExp (mkVar "n") $ mkLogBase (mkValInt b) (mkValInt a)
+             where nk = mkExp (mkVar "n") (mkValInt k)
+                   logn = mkLog $ mkVar "n"
+
+
+
 pow :: String -> Int -> String
 pow s 0 = ""
 pow s 1 = s ++ " "
 pow s n = printf "%s^%d " s n
-
-cost :: Int -> Int -> Int -> Int -> String
-cost a b k 0 | a < b ^ k  = if nk == ""
-                            then "1"
-                            else nk
-             | a == b ^ k = nk ++ "log(n)"
-             | otherwise  = printf "n^(logBase %d(%d))" b a
-             where nk = pow "n" k
-cost a b k p | a < b ^ k  = printf "%slog^%d(n)" nk p
-             | a == b ^ k = printf "%slog^%d(n)" nk (p+1)
-             | otherwise  = printf "n^(logBase %d(%d))" b a
-             where nk = pow "n" k
 
 iniN = 20
 iniA = 2
@@ -126,14 +216,10 @@ diagramTimes inst k p = cat (r2 (0, -1)) $ map ruler inst
                               in cat (r2 (1,0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwG 0.2
 
 
-drawInstances :: DrawingArea -> [(Int, Double)] -> Int -> Int -> IO ()
-drawInstances canvas inst k p = do
-    clearCanvas canvas
-    defaultRender canvas (diagramInstances inst
-                          ===
-                          strutY 2
-                          ===
-                          diagramTimes inst k p)
+drawInCanvas :: DrawingArea -> [Diagram B] -> IO ()
+drawInCanvas canvas elements = do
+  clearCanvas canvas
+  defaultRender canvas $ vsep 2 elements
 
 -- |Clears a 'DrawinArea' by drawing a white rectangle.
 clearCanvas :: DrawingArea -> IO()
@@ -152,6 +238,11 @@ updateGUI elements = do
   k <- read <$> entryGetText ( ke elements )
   p <- read <$> entryGetText ( pe elements )
 
-  labelSetText (costLabel elements) $ cost a b k p
-  drawInstances (canvas elements) (instances n a b) k p
+  let inst = instances n a b
+  drawInCanvas (canvas elements)
+    [ toDiagram $ simplify $ cost a b k p
+    , diagramInstances inst
+    , diagramTimes inst k p
+    ]
+
 

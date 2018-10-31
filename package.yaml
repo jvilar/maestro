@@ -16,4 +16,5 @@ executables:
     - diagrams-lib
     - gtk
     - mtl
-    - reactive-banana
+    - SVGFonts
+    
