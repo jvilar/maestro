@@ -145,7 +145,8 @@ makeGUI = do
         entrySetText entry $ show ini
 
     quitButton elements `on` buttonActivated $ mainQuit
-    -- onDestroy (mainWindow elements) mainQuit
+    mainWindow elements `on` deleteEvent $ liftIO mainQuit >> return False
+    mainWindow elements `on` configureEvent $ liftIO (updateGUI elements) >> return False
 
     widgetShowAll $ mainWindow elements
     return elements
@@ -215,18 +216,19 @@ setEntryKeyEvent elements entry = do
     return ()
 
 diagramInstances :: [(Int, Double)] -> Diagram B
-diagramInstances = cat (r2 (0, -1)) . map ruler
-                   where ruler (n, l) = cat (r2 (1,0)) $ replicate n (rect l 1 # translate (r2 (l/2, -0.5))) # lc black # lwO 0.2
+diagramInstances = cat (r2 (0, -1)) . map (ruler 1)
+
+ruler :: Double -> (Int, Double) -> Diagram B
+ruler h (n, l) = cat (r2 (1, 0)) $ replicate n (rect l h # translate (r2 (l/2, -h/2))) # lc black # lwO 0.2
+
+rulerw :: Double -> (Int, Double) -> Diagram B
+rulerw w (n, l) = cat (r2 (1, 0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwO 0.2
 
 diagramTimes :: [(Int, Double)] -> Int -> Int -> Diagram B
-diagramTimes inst k p = cat (r2 (0, -1)) $ map ruler inst
-    where ruler (n, l) = if k > 0
-                         then let
-                                 h = l^(k-1) * (max (logBase 2 l) 1) ^ p
-                              in cat (r2 (1,0)) $ replicate n (rect l h # translate (r2 (l/2, -h/2))) # lc black # lwO 0.2
-                         else let
-                                 w = (max (logBase 2 l) 1) ^ p
-                              in cat (r2 (1,0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwO 0.2
+diagramTimes inst 0 p = cat (r2 (0, -1)) $ map (\(n, l) -> rulerw (w l) (n, l)) inst
+    where w l = (max (logBase 2 l) 1) ^ p
+diagramTimes inst k p = cat (r2 (0, -1)) $ map (\(n, l) -> ruler (h l) (n, l)) inst
+    where h l = l^(k-1) * (max (logBase 2 l) 1) ^ p
 
 
 drawDiagram :: Image -> Diagram B -> IO ()
