@@ -1,8 +1,13 @@
 name: maestro
 version:             0.1.0.0
+license:             GPL-2
 synopsis:            A graphic show of the maestro theorem
 author:              Juan Miguel Vilar
 maintainer:          jvilar@uji.es
+copyright:           2018 Juan Miguel Vilar
+
+data-files:
+- maestro.glade
 
 dependencies:
 - base >= 4.7 && < 5
@@ -12,9 +17,8 @@ executables:
     main:             maestro.hs
     dependencies:
     - diagrams-cairo
-    - diagrams-gtk
     - diagrams-lib
-    - gtk
+    - gtk3
     - mtl
     - SVGFonts
     

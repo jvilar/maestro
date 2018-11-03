@@ -4,13 +4,15 @@
 import Control.Applicative((<*>),(<$>))
 import Control.Monad(forM_, forM)
 import Control.Monad.Reader(liftIO)
-import Diagrams.Backend.Cairo(B)
-import Diagrams.Backend.Gtk(defaultRender)
+import Diagrams.Backend.Cairo(B, renderCairo)
+-- import Diagrams.Backend.Gtk(defaultRender)
 import Diagrams.Prelude hiding (set)
 import Graphics.UI.Gtk
-import Graphics.UI.Gtk.Gdk.GC
+-- import Graphics.UI.Gtk.Gdk.GC
 import Graphics.SVGFonts
 import Text.Printf(printf)
+
+import Paths_maestro(getDataFileName)
 
 instances :: Double -> Int -> Int -> [(Int, Double)]
 instances size a b = takeWhile ((>=1/fromIntegral b).snd) $ iterate (\(n, s) -> (n*a, s/fromIntegral b)) (1, size)
@@ -32,8 +34,8 @@ fix2 :: (Expression -> Expression -> ExpressionF Expression)
      -> Expression -> Expression -> Expression
 fix2 f a b = Fix $ f a b
 
-up :: (ExpressionF a -> a) -> Expression -> a
-up f = f . fmap (up f) . unfix
+cata :: (ExpressionF a -> a) -> Expression -> a
+cata f = f . fmap (cata f) . unfix
 
 mkValInt :: Int -> Expression
 mkValInt = Fix . ValInt
@@ -59,16 +61,12 @@ mkExpLog = fix2 ExpLog
 mkProd :: Expression -> Expression -> Expression
 mkProd = fix2 Prod
 
-textOptions :: Double -> IO (TextOpts Double)
-textOptions h = do
-  f <- lin
-  return $ TextOpts f INSIDE_H HADV False h 1
 
 myText :: String -> Diagram B
 myText = stroke . flip textSVG 1
 
 toDiagram :: Expression -> Diagram B
-toDiagram = up go
+toDiagram = cata go
   where go :: ExpressionF (Diagram B) -> Diagram B
         go (ValInt n) = myText $ show n
         go (ValDouble d) = myText $ show d
@@ -94,7 +92,7 @@ myLog b v = case compare b v of
                     else Nothing
 
 simplify :: Expression -> Expression
-simplify = up go
+simplify = cata go
   where go :: ExpressionF Expression -> Expression
         go (Exp e (Fix (ValInt 0))) = mkValInt 1
         go (Exp e (Fix (ValInt 1))) = e
@@ -113,81 +111,96 @@ cost a b k p | a < b ^ k = mkProd nk $ mkExp logn (mkValInt p)
              where nk = mkExp (mkVar "n") (mkValInt k)
                    logn = mkLog $ mkVar "n"
 
-
-
-pow :: String -> Int -> String
-pow s 0 = ""
-pow s 1 = s ++ " "
-pow s n = printf "%s^%d " s n
-
 iniN = 20
 iniA = 2
 iniB = 2
 iniK = 1
 iniP = 0
 
-data GUIElements = GUIElements { ne :: Entry
-                               , ae :: Entry
-                               , be :: Entry
-                               , ke :: Entry
-                               , pe :: Entry
-                               , costLabel :: Label
-                               , canvas :: DrawingArea
+data GUIElements = GUIElements { nEntry :: Entry
+                               , aEntry :: Entry
+                               , bEntry :: Entry
+                               , kEntry :: Entry
+                               , pEntry :: Entry
+                               , costImage :: Image
+                               , instancesImage :: Image
+                               , mainWindow :: Window
+                               , quitButton :: Button
                                }
 
 
+makeGUI :: IO GUIElements
+makeGUI = do
+    initGUI
+
+    builder <- builderNew
+    gladefn <- getDataFileName "maestro.glade"
+    builderAddFromFile builder gladefn
+
+    elements <- recoverElements builder
+
+    let entries = map ($ elements) [ nEntry, aEntry, bEntry, kEntry, pEntry ]
+    mapM_ (setEntryKeyEvent elements) entries
+    forM_ (zip entries [iniN, iniA, iniB, iniK, iniP]) $ \(entry, ini) ->
+        entrySetText entry $ show ini
+
+    quitButton elements `on` buttonActivated $ mainQuit
+    -- onDestroy (mainWindow elements) mainQuit
+
+    widgetShowAll $ mainWindow elements
+    return elements
+
+class CanBeCast a where
+    doCast :: GObject -> a
+
+instance CanBeCast Button where
+    doCast = castToButton
+
+instance CanBeCast Entry where
+    doCast = castToEntry
+
+instance CanBeCast DrawingArea where
+    doCast = castToDrawingArea
+
+instance CanBeCast Image where
+    doCast = castToImage
+
+instance CanBeCast Window where
+    doCast = castToWindow
+
+
+recoverElements :: Builder -> IO GUIElements
+recoverElements builder = do
+    let getObject :: (CanBeCast obj, GObjectClass obj) => String -> IO obj
+        getObject = builderGetObject builder doCast
+
+    ne <- getObject "nEntry"
+    ae <- getObject "aEntry"
+    be <- getObject "bEntry"
+    ke <- getObject "kEntry"
+    pe <- getObject "pEntry"
+
+    cIm <- getObject "costImage"
+    iIm <- getObject "instancesImage"
+
+    qb <- getObject "quitButton"
+
+    mw <- getObject "mainWindow"
+
+    return GUIElements { nEntry = ne
+                       , aEntry = ae
+                       , bEntry = be
+                       , kEntry = ke
+                       , pEntry = pe
+                       , costImage = cIm
+                       , instancesImage = iIm
+                       , mainWindow = mw
+                       , quitButton = qb
+                       }
+
 main = do
-         initGUI
-         window <- windowNew
-         set window [ windowTitle := "Master Theorem"
-                    , windowDefaultWidth := 300
-                    , windowDefaultHeight := 200
-                    ]
-         box <- hBoxNew False 2
-         containerAdd window box
-
-         let entryData = [("n:", iniN), ("a:", iniA), ("b:", iniB), ("k:", iniK), ("p:", iniP)]
-             nrows = 2 + length entryData
-         entryTable <- tableNew nrows 2 False
-         boxPackStart box entryTable PackNatural 0
-         entries <- forM (zip entryData [0..]) (addEntry entryTable)
-
-         cLabel <- labelNew (Nothing :: Maybe String)
-         tableAttach entryTable cLabel 0 2 (length entries) (length entries + 1) [] [] 2 2
-
-         cvs <- drawingAreaNew
-         boxPackStart box cvs PackGrow 1
-         widgetModifyBg cvs StateNormal (Color 65535 65535 65535)
-
-         let elements = GUIElements { ne = entries !! 0
-                                    , ae = entries !! 1
-                                    , be = entries !! 2
-                                    , ke = entries !! 3
-                                    , pe = entries !! 4
-                                    , costLabel = cLabel
-                                    , canvas = cvs
-                                    }
-
-         forM_ entries $ setEntryKeyEvent elements
-
-         quitButton <- buttonNewWithLabel "Quit"
-         tableAttach entryTable quitButton 0 2 (nrows-1) nrows [Expand, Fill] [] 2 2
-         onClicked quitButton mainQuit
-         onDestroy window mainQuit
-         widgetShowAll window
-
+         elements <- makeGUI
          mainGUI
-
-addEntry :: Table -> ((String, Int), Int) -> IO Entry
-addEntry tbl ((title, ini), row) = do
-    label <- labelNew $ Just title
-    miscSetAlignment label 0 0.5
-    tableAttach tbl label 0 1 row (row+1) [Fill] [] 2 2
-    entry <- entryNew
-    entrySetText entry $ show ini
-    widgetModifyBg entry StateNormal (Color 65535 65535 65535)
-    tableAttach tbl entry 1 2 row (row+1) [Expand, Fill] [] 2 2
-    return entry
 
 setEntryKeyEvent :: GUIElements -> Entry -> IO ()
 setEntryKeyEvent elements entry = do
@@ -216,33 +229,31 @@ diagramTimes inst k p = cat (r2 (0, -1)) $ map ruler inst
                               in cat (r2 (1,0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwG 0.2
 
 
-drawInCanvas :: DrawingArea -> [Diagram B] -> IO ()
-drawInCanvas canvas elements = do
-  clearCanvas canvas
-  defaultRender canvas $ vsep 2 elements
-
--- |Clears a 'DrawinArea' by drawing a white rectangle.
-clearCanvas :: DrawingArea -> IO()
-clearCanvas canvas = do
-    dr <- widgetGetDrawWindow canvas
-    (w, h) <- drawableGetSize dr
-    gc <- gcNewWithValues dr $ newGCValues { foreground = Color 65535 65535 65535 }
-    drawRectangle dr gc True 0 0 w h
+drawDiagram :: Image -> Diagram B -> IO ()
+drawDiagram image diagram = do
+    w <- (Just . fromIntegral) <$> widgetGetAllocatedWidth image
+    h <- (Just . fromIntegral) <$> widgetGetAllocatedHeight image
+    renderCairo "drawing_.png" (mkSizeSpec2D w h) diagram
+    imageSetFromFile image "drawing_.png"
 
 
 updateGUI :: GUIElements -> IO ()
 updateGUI elements = do
-  a <- read <$> entryGetText ( ae elements )
-  b <- read <$> entryGetText ( be elements )
-  n <- read <$> entryGetText ( ne elements )
-  k <- read <$> entryGetText ( ke elements )
-  p <- read <$> entryGetText ( pe elements )
+    a <- read <$> entryGetText ( aEntry elements )
+    b <- read <$> entryGetText ( bEntry elements )
+    n <- read <$> entryGetText ( nEntry elements )
+    k <- read <$> entryGetText ( kEntry elements )
+    p <- read <$> entryGetText ( pEntry elements )
 
-  let inst = instances n a b
-  drawInCanvas (canvas elements)
-    [ toDiagram $ simplify $ cost a b k p
-    , diagramInstances inst
-    , diagramTimes inst k p
-    ]
+    let inst = instances n a b
+        costDiagram = toDiagram $ simplify $ cost a b k p
+        instanceDiagrams = diagramInstances inst
+                           ===
+                           strutY 2
+                           ===
+                           diagramTimes inst k p
+    drawDiagram (costImage elements) costDiagram
+    drawDiagram (instancesImage elements) instanceDiagrams
+    return ()
 
 
