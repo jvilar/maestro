@@ -63,7 +63,7 @@ mkProd = fix2 Prod
 
 
 myText :: String -> Diagram B
-myText = stroke . flip textSVG 1
+myText = fc black . strokeP . flip textSVG 1
 
 toDiagram :: Expression -> Diagram B
 toDiagram = cata go
@@ -79,7 +79,7 @@ toDiagram = cata go
 
         exponent d = d # translateY 0.5 # reduce
         subindex d = d # translateY (-0.4) # reduce
-        reduce = scale 0.8
+        reduce = scale 0.6
         sep = strut 0.2
         paren e = myText "(" ||| e ||| myText ")"
 
@@ -216,24 +216,24 @@ setEntryKeyEvent elements entry = do
 
 diagramInstances :: [(Int, Double)] -> Diagram B
 diagramInstances = cat (r2 (0, -1)) . map ruler
-                   where ruler (n, l) = cat (r2 (1,0)) $ replicate n (rect l 1 # translate (r2 (l/2, -0.5))) # lc black # lwG 0.2
+                   where ruler (n, l) = cat (r2 (1,0)) $ replicate n (rect l 1 # translate (r2 (l/2, -0.5))) # lc black # lwO 0.2
 
 diagramTimes :: [(Int, Double)] -> Int -> Int -> Diagram B
 diagramTimes inst k p = cat (r2 (0, -1)) $ map ruler inst
     where ruler (n, l) = if k > 0
                          then let
                                  h = l^(k-1) * (max (logBase 2 l) 1) ^ p
-                              in cat (r2 (1,0)) $ replicate n (rect l h # translate (r2 (l/2, -h/2))) # lc black # lwG 0.2
+                              in cat (r2 (1,0)) $ replicate n (rect l h # translate (r2 (l/2, -h/2))) # lc black # lwO 0.2
                          else let
                                  w = (max (logBase 2 l) 1) ^ p
-                              in cat (r2 (1,0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwG 0.2
+                              in cat (r2 (1,0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwO 0.2
 
 
 drawDiagram :: Image -> Diagram B -> IO ()
 drawDiagram image diagram = do
     w <- (Just . fromIntegral) <$> widgetGetAllocatedWidth image
     h <- (Just . fromIntegral) <$> widgetGetAllocatedHeight image
-    renderCairo "drawing_.png" (mkSizeSpec2D w h) diagram
+    renderCairo "drawing_.png" (mkSizeSpec2D w h) $ frame 0.2 diagram
     imageSetFromFile image "drawing_.png"
 
 
