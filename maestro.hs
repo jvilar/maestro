@@ -205,13 +205,14 @@ main = do
 
 setEntryKeyEvent :: GUIElements -> Entry -> IO ()
 setEntryKeyEvent elements entry = do
+    widgetSetState entry StateNormal
     entry `on` keyReleaseEvent $ liftIO $ do
                     t <- entryGetText entry
                     case reads t :: [(Int, String)] of
                       [(n, "")] -> do
-                                     widgetModifyBg entry StateNormal (Color 65535 65535 65535)
+                                     widgetModifyFg entry StateNormal (Color 0 0 0)
                                      updateGUI elements
-                      _ -> widgetModifyBg entry StateNormal (Color 65535 0 0)
+                      _ -> widgetModifyFg entry StateNormal (Color 65535 0 0)
                     return True
     return ()
 
