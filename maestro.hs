@@ -4,18 +4,17 @@
 import Control.Applicative((<*>),(<$>))
 import Control.Monad(forM_, forM)
 import Control.Monad.Reader(liftIO)
+import Data.Maybe(isNothing)
 import Diagrams.Backend.Cairo(B, renderCairo)
--- import Diagrams.Backend.Gtk(defaultRender)
-import Diagrams.Prelude hiding (set)
+import Diagrams.Prelude hiding (after, set)
 import Graphics.UI.Gtk
--- import Graphics.UI.Gtk.Gdk.GC
 import Graphics.SVGFonts
 import Text.Printf(printf)
 
 import Paths_maestro(getDataFileName)
 
-instances :: Double -> Int -> Int -> [(Int, Double)]
-instances size a b = takeWhile ((>=1/fromIntegral b).snd) $ iterate (\(n, s) -> (n*a, s/fromIntegral b)) (1, size)
+instances :: Int -> Int -> Int -> [(Int, Double)]
+instances size a b = takeWhile ((>=1/fromIntegral b).snd) $ iterate (\(n, s) -> (n*a, s/fromIntegral b)) (1, fromIntegral size)
 
 newtype Fix f = Fix { unfix :: f (Fix f) }
 
@@ -146,7 +145,7 @@ makeGUI = do
 
     quitButton elements `on` buttonActivated $ mainQuit
     mainWindow elements `on` deleteEvent $ liftIO mainQuit >> return False
-    mainWindow elements `on` configureEvent $ liftIO (updateGUI elements) >> return False
+    -- mainWindow elements `after` sizeAllocate $ const $ updateGUI elements
 
     widgetShowAll $ mainWindow elements
     return elements
@@ -206,14 +205,7 @@ main = do
 setEntryKeyEvent :: GUIElements -> Entry -> IO ()
 setEntryKeyEvent elements entry = do
     widgetSetState entry StateNormal
-    entry `on` keyReleaseEvent $ liftIO $ do
-                    t <- entryGetText entry
-                    case reads t :: [(Int, String)] of
-                      [(n, "")] -> do
-                                     widgetModifyFg entry StateNormal (Color 0 0 0)
-                                     updateGUI elements
-                      _ -> widgetModifyFg entry StateNormal (Color 65535 0 0)
-                    return True
+    entry `on` keyReleaseEvent $ liftIO $ updateGUI elements >> return True
     return ()
 
 diagramInstances :: [(Int, Double)] -> Diagram B
@@ -240,23 +232,38 @@ drawDiagram image diagram = do
     imageSetFromFile image "drawing_.png"
 
 
+readFromEntry :: Int -> Entry -> IO (Maybe Int)
+readFromEntry min entry = do
+    t <- entryGetText entry
+    let result = case reads t :: [(Int, String)] of
+                      [(n, "")] -> if n >= min
+                                   then Just n
+                                   else Nothing
+                      _ -> Nothing
+    widgetModifyFg entry StateNormal $ if isNothing result
+                                       then (Color 65535 0 0)
+                                       else (Color 0 0 0)
+    return result
+
+
+
 updateGUI :: GUIElements -> IO ()
 updateGUI elements = do
-    a <- read <$> entryGetText ( aEntry elements )
-    b <- read <$> entryGetText ( bEntry elements )
-    n <- read <$> entryGetText ( nEntry elements )
-    k <- read <$> entryGetText ( kEntry elements )
-    p <- read <$> entryGetText ( pEntry elements )
+    l <- mapM (\(e, m) -> readFromEntry m $ e elements)
+              [ (aEntry, 1), (bEntry, 2), (nEntry, 1), (kEntry, 0), (pEntry, 0) ]
 
-    let inst = instances n a b
-        costDiagram = toDiagram $ simplify $ cost a b k p
-        instanceDiagrams = diagramInstances inst
-                           ===
-                           strutY 2
-                           ===
-                           diagramTimes inst k p
+    let (costDiagram, instanceDiagrams) =
+             case sequence l of
+                Nothing -> (myText "Error", strutY 2)
+                Just [a, b, n, k, p] ->
+                    let inst = instances n a b
+                        costDiagram = toDiagram $ simplify $ cost a b k p
+                        instanceDiagrams = diagramInstances inst
+                                           ===
+                                           strutY 2
+                                           ===
+                                           diagramTimes inst k p
+                    in (costDiagram, instanceDiagrams)
     drawDiagram (costImage elements) costDiagram
     drawDiagram (instancesImage elements) instanceDiagrams
     return ()
-
-
