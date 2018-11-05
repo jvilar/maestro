@@ -2,6 +2,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 import Control.Applicative((<*>),(<$>))
+import Control.Arrow(second)
 import Control.Monad(forM_, forM)
 import Control.Monad.Reader(liftIO)
 import Data.Maybe(isNothing)
@@ -9,12 +10,13 @@ import Diagrams.Backend.Cairo(B, renderCairo)
 import Diagrams.Prelude hiding (after, set)
 import Graphics.UI.Gtk
 import Graphics.SVGFonts
+import Numeric(showGFloat)
 import Text.Printf(printf)
 
 import Paths_maestro(getDataFileName)
 
 instances :: Int -> Int -> Int -> [(Int, Double)]
-instances size a b = takeWhile ((>=1/fromIntegral b).snd) $ iterate (\(n, s) -> (n*a, s/fromIntegral b)) (1, fromIntegral size)
+instances size a b = takeWhile ((>=1).snd) $ iterate (\(n, s) -> (n*a, s/fromIntegral b)) (1, fromIntegral size)
 
 newtype Fix f = Fix { unfix :: f (Fix f) }
 
@@ -62,7 +64,7 @@ mkProd = fix2 Prod
 
 
 myText :: String -> Diagram B
-myText = fc black . strokeP . flip textSVG 1
+myText = lwO 0.1 . fc black . strokeP . flip textSVG 1
 
 toDiagram :: Expression -> Diagram B
 toDiagram = cata go
@@ -208,21 +210,43 @@ setEntryKeyEvent elements entry = do
     entry `on` keyReleaseEvent $ liftIO $ updateGUI elements >> return True
     return ()
 
+drawingLimit :: Int
+drawingLimit = 500
+
 diagramInstances :: [(Int, Double)] -> Diagram B
-diagramInstances = cat (r2 (0, -1)) . map (ruler 1)
+diagramInstances inst | sum (map fst inst) <= drawingLimit  = cat (r2 (0, -1)) $ map (ruler 1) inst
+                      | otherwise = valuesDiagram inst
+
+valuesDiagram :: [(Int, Double)] -> Diagram B
+valuesDiagram values = cat (r2 (0, -1)) $ map (frame 0.2 . scale 0.8) $ map pairDiagram values ++ [ totalDiagram values ]
+
+showFloat :: Double -> String
+showFloat = flip (showGFloat (Just 2)) " "
+
+totalDiagram :: [(Int, Double)] -> Diagram B
+totalDiagram l = withCenter ":" (myText "Total") (myText . showFloat . sum $ map (\(n, d) -> fromIntegral n * d) l)
+
+pairDiagram :: (Int, Double) -> Diagram B
+pairDiagram (n, d) = withCenter "=" left right
+  where left = hsep 0.2 (map myText [ show n, "x", showFloat d])
+        right = myText $ showFloat $ d * fromIntegral n
+
+withCenter :: String -> Diagram B -> Diagram B -> Diagram B
+withCenter center left right = beside (r2 (1, 0)) (beside (r2 (-1, 0)) (myText center) (left ||| strutX 0.2)) (strutX 0.2 ||| right)
 
 ruler :: Double -> (Int, Double) -> Diagram B
-ruler h (n, l) = cat (r2 (1, 0)) $ replicate n (rect l h # translate (r2 (l/2, -h/2))) # lc black # lwO 0.2
+ruler h (n, l) = cat (r2 (1, 0)) $ replicate n (rect l h # translate (r2 (l/2, -h/2))) # lc black # lwO 0.3
 
 rulerw :: Double -> (Int, Double) -> Diagram B
-rulerw w (n, l) = cat (r2 (1, 0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwO 0.2
+rulerw w (n, l) = cat (r2 (1, 0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwO 0.3
 
 diagramTimes :: [(Int, Double)] -> Int -> Int -> Diagram B
-diagramTimes inst 0 p = cat (r2 (0, -1)) $ map (\(n, l) -> rulerw (w l) (n, l)) inst
+diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map (second toCost) inst
+                      | k == 0 = cat (r2 (0, -1)) $ map (\(n, l) -> rulerw (w l) (n, l)) inst
+                      | otherwise = cat (r2 (0, -1)) $ map (\(n, l) -> ruler (h l) (n, l)) inst
     where w l = (max (logBase 2 l) 1) ^ p
-diagramTimes inst k p = cat (r2 (0, -1)) $ map (\(n, l) -> ruler (h l) (n, l)) inst
-    where h l = l^(k-1) * (max (logBase 2 l) 1) ^ p
-
+          h l = l^(k-1) * (max (logBase 2 l) 1) ^ p
+          toCost l = l ^ k * (max (logBase 2 l) 1) ^ p
 
 drawDiagram :: Image -> Diagram B -> IO ()
 drawDiagram image diagram = do
@@ -257,7 +281,7 @@ updateGUI elements = do
                 Nothing -> (myText "Error", strutY 2)
                 Just [a, b, n, k, p] ->
                     let inst = instances n a b
-                        costDiagram = toDiagram $ simplify $ cost a b k p
+                        costDiagram = hsep 0.2 [ myText "O(", toDiagram $ simplify $ cost a b k p, myText ")"]
                         instanceDiagrams = diagramInstances inst
                                            ===
                                            strutY 2
