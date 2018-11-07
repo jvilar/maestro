@@ -240,10 +240,10 @@ withCenter :: String -> Diagram B -> Diagram B -> Diagram B
 withCenter center left right = beside (r2 (1, 0)) (beside (r2 (-1, 0)) (myText center) (left ||| strutX 0.2)) (strutX 0.2 ||| right)
 
 ruler :: Double -> (Int, Double) -> Diagram B
-ruler h (n, l) = cat (r2 (1, 0)) $ replicate n (rect l h # translate (r2 (l/2, -h/2))) # lc black # lwO 0.3
+ruler h (n, l) = cat (r2 (1, 0)) $ replicate n (rect l h # translate (r2 (l/2, -h/2))) # lc black # lwO 0.5
 
 rulerw :: Double -> (Int, Double) -> Diagram B
-rulerw w (n, l) = cat (r2 (1, 0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwO 0.3
+rulerw w (n, l) = cat (r2 (1, 0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwO 0.5
 
 diagramTimes :: [(Int, Double)] -> Int -> Int -> Diagram B
 diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map (second toCost) inst
@@ -258,15 +258,18 @@ drawDiagram area diagram = do
     drawWindow <- widgetGetParentWindow area
     w <- drawWindowGetWidth drawWindow
     h <- drawWindowGetHeight drawWindow
-    putStrLn $ "Drawing diagram: width: " ++ show w ++ " height: " ++ show h
     let opts = CairoOptions "aaa.png" sizeSpec RenderOnly False
         sizeSpec = mkSizeSpec2D (Just $ fromIntegral w) (Just $ fromIntegral h)
         (_, renderDiagram) = renderDia Cairo opts $ frame 0.2 diagram
-    renderWithDrawWindow drawWindow $ do
-      setSourceColor $ Color 65535 65535 65535
-      rectangle $ Rectangle 0 0 w h
-      Cairo.fill
-      renderDiagram
+        rect = Rectangle 0 0 w h
+        render = do
+           setSourceColor $ Color 65535 65535 65535
+           rectangle rect
+           Cairo.fill
+           renderDiagram
+    area `on` draw $ render
+    drawWindowInvalidateRect drawWindow rect True
+    return ()
 
 readFromEntry :: Int -> Entry -> IO (Maybe Int)
 readFromEntry min entry = do
@@ -302,4 +305,3 @@ updateGUI elements = do
                     in (costDiagram, instanceDiagrams)
     drawDiagram (costDrawingArea elements) costDiagram
     drawDiagram (instanceDrawingArea elements) instanceDiagrams
-    return ()
