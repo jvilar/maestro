@@ -6,9 +6,13 @@ import Control.Arrow(second)
 import Control.Monad(forM_, forM)
 import Control.Monad.Reader(liftIO)
 import Data.Maybe(isNothing)
-import Diagrams.Backend.Cairo(B, renderCairo)
+import Diagrams.Core.Compile(renderDia)
+import Diagrams.Backend.Cairo(B, Cairo(Cairo), OutputType(RenderOnly))
+import Diagrams.Backend.Cairo.Internal (Options(CairoOptions))
 import Diagrams.Prelude hiding (after, set)
 import Graphics.UI.Gtk
+import Graphics.UI.Gtk.Cairo
+import qualified Graphics.Rendering.Cairo as Cairo
 import Graphics.SVGFonts
 import Numeric(showGFloat)
 import Text.Printf(printf)
@@ -123,8 +127,8 @@ data GUIElements = GUIElements { nEntry :: Entry
                                , bEntry :: Entry
                                , kEntry :: Entry
                                , pEntry :: Entry
-                               , costImage :: Image
-                               , instancesImage :: Image
+                               , costDrawingArea :: DrawingArea
+                               , instanceDrawingArea :: DrawingArea
                                , mainWindow :: Window
                                , quitButton :: Button
                                }
@@ -145,11 +149,12 @@ makeGUI = do
     forM_ (zip entries [iniN, iniA, iniB, iniK, iniP]) $ \(entry, ini) ->
         entrySetText entry $ show ini
 
-    quitButton elements `on` buttonActivated $ mainQuit
     mainWindow elements `on` deleteEvent $ liftIO mainQuit >> return False
-    -- mainWindow elements `after` sizeAllocate $ const $ updateGUI elements
+    quitButton elements `on` buttonActivated $ mainQuit
 
     widgetShowAll $ mainWindow elements
+    mainWindow elements `after` sizeAllocate $ const $ updateGUI elements
+
     return elements
 
 class CanBeCast a where
@@ -182,8 +187,8 @@ recoverElements builder = do
     ke <- getObject "kEntry"
     pe <- getObject "pEntry"
 
-    cIm <- getObject "costImage"
-    iIm <- getObject "instancesImage"
+    cIm <- getObject "costDrawingArea"
+    iIm <- getObject "instanceDrawingArea"
 
     qb <- getObject "quitButton"
 
@@ -194,8 +199,8 @@ recoverElements builder = do
                        , bEntry = be
                        , kEntry = ke
                        , pEntry = pe
-                       , costImage = cIm
-                       , instancesImage = iIm
+                       , costDrawingArea = cIm
+                       , instanceDrawingArea = iIm
                        , mainWindow = mw
                        , quitButton = qb
                        }
@@ -248,13 +253,20 @@ diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map 
           h l = l^(k-1) * (max (logBase 2 l) 1) ^ p
           toCost l = l ^ k * (max (logBase 2 l) 1) ^ p
 
-drawDiagram :: Image -> Diagram B -> IO ()
-drawDiagram image diagram = do
-    w <- (Just . fromIntegral) <$> widgetGetAllocatedWidth image
-    h <- (Just . fromIntegral) <$> widgetGetAllocatedHeight image
-    renderCairo "drawing_.png" (mkSizeSpec2D w h) $ frame 0.2 diagram
-    imageSetFromFile image "drawing_.png"
-
+drawDiagram :: DrawingArea -> Diagram B -> IO ()
+drawDiagram area diagram = do
+    drawWindow <- widgetGetParentWindow area
+    w <- drawWindowGetWidth drawWindow
+    h <- drawWindowGetHeight drawWindow
+    putStrLn $ "Drawing diagram: width: " ++ show w ++ " height: " ++ show h
+    let opts = CairoOptions "aaa.png" sizeSpec RenderOnly False
+        sizeSpec = mkSizeSpec2D (Just $ fromIntegral w) (Just $ fromIntegral h)
+        (_, renderDiagram) = renderDia Cairo opts $ frame 0.2 diagram
+    renderWithDrawWindow drawWindow $ do
+      setSourceColor $ Color 65535 65535 65535
+      rectangle $ Rectangle 0 0 w h
+      Cairo.fill
+      renderDiagram
 
 readFromEntry :: Int -> Entry -> IO (Maybe Int)
 readFromEntry min entry = do
@@ -288,6 +300,6 @@ updateGUI elements = do
                                            ===
                                            diagramTimes inst k p
                     in (costDiagram, instanceDiagrams)
-    drawDiagram (costImage elements) costDiagram
-    drawDiagram (instancesImage elements) instanceDiagrams
+    drawDiagram (costDrawingArea elements) costDiagram
+    drawDiagram (instanceDrawingArea elements) instanceDiagrams
     return ()

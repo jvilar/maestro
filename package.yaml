@@ -16,7 +16,9 @@ executables:
   maestro:
     main:             maestro.hs
     dependencies:
+    - cairo
     - diagrams-cairo
+    - diagrams-core
     - diagrams-lib
     - gtk3
     - mtl
