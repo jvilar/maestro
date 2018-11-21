@@ -150,7 +150,7 @@ cost a b k p | a < b ^ k = mkProd nk $ mkExp logn (mkValInt p)
              where nk = mkExp (mkVar "n") (mkValInt k)
                    logn = mkLog $ mkVar "n"
 
-iniN = 32
+iniN = 16
 iniA = 2
 iniB = 2
 iniK = 1
