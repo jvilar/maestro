@@ -6,7 +6,7 @@
 This program shows a graphical representation of the
 [master theorem](https://en.wikipedia.org/wiki/Master_theorem_(analysis_of_algorithms)).
 
-[capture](./capture.jpg)
+![capture](./capture.jpg)
 
 ### Usage
 
@@ -22,7 +22,8 @@ The parameters are:
 
 The screen shows three elements:
 
-+ The cost of the algorithm in O notation.
++ The cost of the algorithm in big O notation is shown in the (resizeable)
+  upper part.
 
 + A representation of the sizes of the instances, one bar for each
   instance and organized in levels. The width of each bar represents
@@ -42,7 +43,7 @@ The screen shows three elements:
 
 ### Installation
 
-As *maestro* is written in [haskell](htpps://www.haskell.org), the
+As *maestro* is written in [haskell](https://www.haskell.org), the
 easiest way to compile it is to use *stack*:
 
 + Install stack as explained [here](https://docs.haskellstack.org/en/stable/README/).
