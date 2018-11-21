@@ -1,7 +1,7 @@
 name: maestro
 version:             0.1.0.0
-license:             GPL-2
-synopsis:            A graphic show of the maestro theorem
+license:             BSD3
+synopsis:            A graphic show of the master theorem
 author:              Juan Miguel Vilar
 maintainer:          jvilar@uji.es
 copyright:           2018 Juan Miguel Vilar
