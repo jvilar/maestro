@@ -1,6 +1,9 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-
 Copyright Juan Miguel Vilar Torres (c) 2018
@@ -40,16 +43,16 @@ import Control.Arrow(second)
 import Control.Monad(forM_, forM)
 import Control.Monad.Reader(liftIO)
 import Data.Maybe(isNothing)
+import Data.String(IsString(..))
 import Diagrams.Core.Compile(renderDia)
 import Diagrams.Backend.Cairo(B, Cairo(Cairo), OutputType(RenderOnly))
 import Diagrams.Backend.Cairo.Internal (Options(CairoOptions))
-import Diagrams.Prelude hiding (after, set)
+import Diagrams.Prelude hiding (after, set, Sum)
 import Graphics.UI.Gtk
 import Graphics.UI.Gtk.Cairo
 import qualified Graphics.Rendering.Cairo as Cairo
 import Graphics.SVGFonts
 import Numeric(showGFloat)
-import Text.Printf(printf)
 
 import Paths_maestro(getDataFileName)
 
@@ -63,11 +66,35 @@ data ExpressionF b = ValInt Int
                    | Var String
                    | Log b
                    | LogBase b b
-                   | Exp b b
-                   | ExpLog b b
-                   | Prod b b deriving Functor
+                   | Pow b b
+                   | PowLog b b
+                   | Sum b b
+                   | Diff b b
+                   | Prod b b
+                   | Div b b
+                   | FuncApp b b
+                     deriving Functor
 
 type Expression = Fix ExpressionF
+
+instance Num Expression where
+    (+) = mkSum
+    (-) = mkDiff
+    (*) = mkProd
+    abs = mkFuncApp (mkVar "abs")
+    signum = mkFuncApp (mkVar "signum")
+    fromInteger = mkValInt . fromInteger
+
+instance Fractional Expression where
+    (/) = mkDiv
+
+instance Floating Expression where
+    (**) = mkPow
+    logBase = mkLogBase
+    log = mkLog
+
+instance IsString Expression where
+    fromString = mkVar
 
 fix2 :: (Expression -> Expression -> ExpressionF Expression)
      -> Expression -> Expression -> Expression
@@ -91,14 +118,26 @@ mkLog = Fix . Log
 mkLogBase :: Expression -> Expression -> Expression
 mkLogBase = fix2 LogBase
 
-mkExp :: Expression -> Expression -> Expression
-mkExp = fix2 Exp
+mkPow :: Expression -> Expression -> Expression
+mkPow = fix2 Pow
 
-mkExpLog :: Expression -> Expression -> Expression
-mkExpLog = fix2 ExpLog
+mkPowLog :: Expression -> Expression -> Expression
+mkPowLog = fix2 PowLog
+
+mkSum :: Expression -> Expression -> Expression
+mkSum = fix2 Sum
+
+mkDiff :: Expression -> Expression -> Expression
+mkDiff = fix2 Diff
 
 mkProd :: Expression -> Expression -> Expression
 mkProd = fix2 Prod
+
+mkDiv :: Expression -> Expression -> Expression
+mkDiv = fix2 Div
+
+mkFuncApp :: Expression -> Expression -> Expression
+mkFuncApp = fix2 FuncApp
 
 
 myText :: String -> Diagram B
@@ -112,14 +151,17 @@ toDiagram = cata go
         go (Var s) = myText s
         go (Log d) = myText "log" ||| paren d
         go (LogBase d1 d2) = myText "log" ||| subindex d1 ||| paren d2
-        go (Exp d1 d2) = d1 ||| exponent d2
-        go (ExpLog d1 d2) = myText "log" ||| exponent d2 ||| paren d1
+        go (Pow d1 d2) = d1 ||| exponent d2
+        go (PowLog d1 d2) = myText "log" ||| exponent d2 ||| paren d1
+        go (Sum d1 d2) = d1 ||| myText "+" ||| d2
         go (Prod d1 d2) = d1 ||| sep ||| d2
+        go (Div d1 d2) = d1 ||| myText "/" ||| d2
+        go (FuncApp d1 d2) = d1 ||| paren d2
 
         exponent d = d # translateY 0.5 # reduce
         subindex d = d # translateY (-0.4) # reduce
         reduce = scale 0.6
-        sep = strut 0.2
+        sep = strut 0.1
         paren e = myText "(" ||| e ||| myText ")"
 
 myLog :: Int -> Int -> Maybe Int
@@ -133,22 +175,31 @@ myLog b v = case compare b v of
 simplify :: Expression -> Expression
 simplify = cata go
   where go :: ExpressionF Expression -> Expression
-        go (Exp e (Fix (ValInt 0))) = mkValInt 1
-        go (Exp e (Fix (ValInt 1))) = e
-        go (Exp (Fix (ValInt 1)) _) = mkValInt 1
-        go (Exp (Fix (Log b)) e) = mkExpLog b e
+        go (Pow e (Fix (ValInt 0))) = mkValInt 1
+        go (Pow e (Fix (ValInt 1))) = e
+        go (Pow (Fix (ValInt 1)) _) = mkValInt 1
+        go (Pow (Fix (Log b)) e) = mkPowLog b e
         go (Prod (Fix (ValInt 1)) e) = e
         go (Prod e (Fix (ValInt 1))) = e
+        go (Div e (Fix (ValInt 1))) = e
         go e@(LogBase (Fix (ValInt b)) (Fix (ValInt v))) = maybe (Fix e) mkValInt $ myLog b v
         go e = Fix e
 
 
 cost :: Int -> Int -> Int -> Int -> Expression
-cost a b k p | a < b ^ k = mkProd nk $ mkExp logn (mkValInt p)
-             | a == b ^ k = mkProd nk $ mkExp logn (mkValInt (p+1))
-             | otherwise = mkExp (mkVar "n") $ mkLogBase (mkValInt b) (mkValInt a)
-             where nk = mkExp (mkVar "n") (mkValInt k)
-                   logn = mkLog $ mkVar "n"
+cost a b k p | a < b ^ k = "n" ** k' * log "n" ** p'
+             | a == b ^ k = "n" ** k' * log "n" ** fromIntegral(p + 1)
+             | otherwise = "n" ** logBase b' a'
+             where a' = fromIntegral a
+                   b' = fromIntegral b
+                   k' = fromIntegral k
+                   p' = fromIntegral p
+
+generalEquation :: Expression
+generalEquation = "a" * mkFuncApp "T" ("n"/"b") + mkFuncApp "O" ("n" ** "k" * mkLog "n" ** "p")
+
+filledEquation :: Int -> Int -> Int -> Int -> Expression
+filledEquation a b k p = simplify $ fromIntegral a * mkFuncApp "T" ("n"/fromIntegral b) + mkFuncApp "O" ("n" ** fromIntegral k * mkLog "n" ** fromIntegral p)
 
 iniN = 16
 iniA = 2
@@ -163,6 +214,8 @@ data GUIElements = GUIElements { nEntry :: Entry
                                , pEntry :: Entry
                                , costDrawingArea :: DrawingArea
                                , instanceDrawingArea :: DrawingArea
+                               , generalEquationDrawingArea :: DrawingArea
+                               , filledEquationDrawingArea :: DrawingArea
                                , mainWindow :: Window
                                , quitButton :: Button
                                }
@@ -223,6 +276,8 @@ recoverElements builder = do
 
     cIm <- getObject "costDrawingArea"
     iIm <- getObject "instanceDrawingArea"
+    geIm <- getObject "generalEquationDrawingArea"
+    feIm <- getObject "filledEquationDrawingArea"
 
     qb <- getObject "quitButton"
 
@@ -235,6 +290,8 @@ recoverElements builder = do
                        , pEntry = pe
                        , costDrawingArea = cIm
                        , instanceDrawingArea = iIm
+                       , generalEquationDrawingArea = geIm
+                       , filledEquationDrawingArea = feIm
                        , mainWindow = mw
                        , quitButton = qb
                        }
@@ -289,16 +346,15 @@ diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map 
 
 drawDiagram :: DrawingArea -> Diagram B -> IO ()
 drawDiagram area diagram = do
+    rect <- widgetGetAllocation area
     drawWindow <- widgetGetParentWindow area
-    w <- drawWindowGetWidth drawWindow
-    h <- drawWindowGetHeight drawWindow
     let opts = CairoOptions "aaa.png" sizeSpec RenderOnly False
+        Rectangle _ _ w h = rect
         sizeSpec = mkSizeSpec2D (Just $ fromIntegral w) (Just $ fromIntegral h)
         (_, renderDiagram) = renderDia Cairo opts $ frame 0.2 diagram
-        rect = Rectangle 0 0 w h
         render = do
            setSourceColor $ Color 65535 65535 65535
-           rectangle rect
+           rectangle $ Rectangle 0 0 w h
            Cairo.fill
            renderDiagram
     area `on` draw $ render
@@ -325,9 +381,9 @@ updateGUI elements = do
     l <- mapM (\(e, m) -> readFromEntry m $ e elements)
               [ (aEntry, 1), (bEntry, 2), (nEntry, 1), (kEntry, 0), (pEntry, 0) ]
 
-    let (costDiagram, instanceDiagrams) =
+    let (costDiagram, instanceDiagrams, filledDiagram) =
              case sequence l of
-                Nothing -> (myText "Error", strutY 2)
+                Nothing -> (myText "Error", strutY 2, myText "Error")
                 Just [a, b, n, k, p] ->
                     let inst = instances n a b
                         costDiagram = hsep 0.2 [ myText "O(", toDiagram $ simplify $ cost a b k p, myText ")"]
@@ -336,6 +392,12 @@ updateGUI elements = do
                                            strutY 2
                                            ===
                                            diagramTimes inst k p
-                    in (costDiagram, instanceDiagrams)
+                        filledDiagram = hsep 0.2 [ myText "T(n) =", toDiagram $ filledEquation a b k p ]
+                    in (costDiagram, instanceDiagrams, filledDiagram)
     drawDiagram (costDrawingArea elements) costDiagram
     drawDiagram (instanceDrawingArea elements) instanceDiagrams
+
+    let eqDiagram = hsep 0.2 [ myText "T(n) = ", toDiagram generalEquation ]
+    drawDiagram (generalEquationDrawingArea elements) eqDiagram
+    drawDiagram (filledEquationDrawingArea elements) filledDiagram
+
