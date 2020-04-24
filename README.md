@@ -20,6 +20,12 @@ The parameters are:
 
 + `k` and `p`: the cost of the computation in each level is O(n^k log^p(n)).
 
+Bellow the parameters there are two equations:
+
++ The one with the parameters filled. This is the equation solved.
+
++ The generic one showing the parameters.
+
 The screen shows three elements:
 
 + The cost of the algorithm in big O notation is shown in the (resizeable)
