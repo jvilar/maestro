@@ -1,0 +1,7 @@
+cradle:
+  stack:
+    - path: "././maestro.hs"
+      component: "maestro:exe:maestro"
+
+    - path: "././Paths_maestro.hs"
+      component: "maestro:exe:maestro"

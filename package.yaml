@@ -16,11 +16,12 @@ executables:
   maestro:
     main:             maestro.hs
     dependencies:
-    - cairo
-    - diagrams-cairo
+    - diagrams-rasterific
     - diagrams-core
     - diagrams-lib
-    - gtk3
+    - haskell-gi-base
+    - gi-gdk
+    - gi-gtk
     - mtl
     - SVGFonts
-    
+    - text

@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLabels #-}
 
 {-
 Copyright Juan Miguel Vilar Torres (c) 2018
@@ -42,19 +43,25 @@ import Control.Applicative((<*>),(<$>))
 import Control.Arrow(second)
 import Control.Monad(forM_, forM)
 import Control.Monad.Reader(liftIO)
-import Data.Maybe(isNothing)
+import Data.Maybe(isNothing, fromJust)
 import Data.String(IsString(..))
 import Diagrams.Core.Compile(renderDia)
-import Diagrams.Backend.Cairo(B, Cairo(Cairo), OutputType(RenderOnly))
-import Diagrams.Backend.Cairo.Internal (Options(CairoOptions))
+import Diagrams.Backend.Rasterific(B, Options (RasterificOptions), Rasterific (Rasterific), renderRasterific)
 import Diagrams.Prelude hiding (after, set, Sum)
-import Graphics.UI.Gtk
-import Graphics.UI.Gtk.Cairo
-import qualified Graphics.Rendering.Cairo as Cairo
+import Data.Text(Text)
+import qualified Data.Text as T
+import GI.Gdk(Rectangle (Rectangle), newZeroRGBA, rGBAParse, windowInvalidateRect)
+import GI.Gdk.Structs.Rectangle(getRectangleWidth, getRectangleHeight)
+import qualified GI.Gtk as Gtk
+import GI.Gtk hiding (main)
+import GI.Gtk.Flags(StateFlags(..))
+import Data.GI.Base.GObject(GObjectClass)
 import Graphics.SVGFonts
 import Numeric(showGFloat)
 
 import Paths_maestro(getDataFileName)
+import GI.Gtk.Objects.Builder (builderNewFromFile)
+import GI.Gtk.Objects (onWidgetDestroy)
 
 instances :: Int -> Int -> Int -> [(Int, Double)]
 instances size a b = takeWhile ((>=1).snd) $ iterate (\(n, s) -> (n*a, s/fromIntegral b)) (1, fromIntegral size)
@@ -212,61 +219,64 @@ data GUIElements = GUIElements { nEntry :: Entry
                                , bEntry :: Entry
                                , kEntry :: Entry
                                , pEntry :: Entry
-                               , costDrawingArea :: DrawingArea
-                               , instanceDrawingArea :: DrawingArea
-                               , generalEquationDrawingArea :: DrawingArea
-                               , filledEquationDrawingArea :: DrawingArea
+                               , costImage :: Image
+                               , instanceImage :: Image
+                               , generalEquationImage :: Image
+                               , filledEquationImage :: Image
                                , mainWindow :: Window
                                , quitButton :: Button
                                }
 
 
+tshow :: Show a => a -> Text
+tshow = T.pack . show
+
+
 makeGUI :: IO GUIElements
 makeGUI = do
-    initGUI
+    Gtk.init Nothing
 
-    builder <- builderNew
     gladefn <- getDataFileName "maestro.glade"
-    builderAddFromFile builder gladefn
+    builder <- builderNewFromFile $ T.pack gladefn
 
     elements <- recoverElements builder
 
     let entries = map ($ elements) [ nEntry, aEntry, bEntry, kEntry, pEntry ]
     mapM_ (setEntryKeyEvent elements) entries
     forM_ (zip entries [iniN, iniA, iniB, iniK, iniP]) $ \(entry, ini) ->
-        entrySetText entry $ show ini
+        entrySetText entry $ tshow ini
 
-    mainWindow elements `on` deleteEvent $ liftIO mainQuit >> return False
-    quitButton elements `on` buttonActivated $ mainQuit
+    onWidgetDestroy (mainWindow elements) mainQuit
+    onButtonActivate (quitButton elements) mainQuit
 
     widgetShowAll $ mainWindow elements
-    mainWindow elements `after` sizeAllocate $ const $ updateGUI elements
+    onWidgetSizeAllocate (mainWindow elements) $ const $ updateGUI elements
 
     return elements
 
-class CanBeCast a where
-    doCast :: GObject -> a
+class GObject a => CanBeCast a where
+    doCast :: GObject o => o -> IO a
 
 instance CanBeCast Button where
-    doCast = castToButton
+    doCast = unsafeCastTo Button
 
 instance CanBeCast Entry where
-    doCast = castToEntry
+    doCast = unsafeCastTo Entry
 
 instance CanBeCast DrawingArea where
-    doCast = castToDrawingArea
+    doCast = unsafeCastTo DrawingArea
 
 instance CanBeCast Image where
-    doCast = castToImage
+    doCast = unsafeCastTo Image
 
 instance CanBeCast Window where
-    doCast = castToWindow
+    doCast = unsafeCastTo Window
 
 
 recoverElements :: Builder -> IO GUIElements
 recoverElements builder = do
-    let getObject :: (CanBeCast obj, GObjectClass obj) => String -> IO obj
-        getObject = builderGetObject builder doCast
+    let getObject :: CanBeCast obj => Text -> IO obj
+        getObject name = builderGetObject builder name >>= doCast . fromJust
 
     ne <- getObject "nEntry"
     ae <- getObject "aEntry"
@@ -274,10 +284,10 @@ recoverElements builder = do
     ke <- getObject "kEntry"
     pe <- getObject "pEntry"
 
-    cIm <- getObject "costDrawingArea"
-    iIm <- getObject "instanceDrawingArea"
-    geIm <- getObject "generalEquationDrawingArea"
-    feIm <- getObject "filledEquationDrawingArea"
+    cIm <- getObject "costImage"
+    iIm <- getObject "instanceImage"
+    geIm <- getObject "generalEquationImage"
+    feIm <- getObject "filledEquationImage"
 
     qb <- getObject "quitButton"
 
@@ -288,22 +298,22 @@ recoverElements builder = do
                        , bEntry = be
                        , kEntry = ke
                        , pEntry = pe
-                       , costDrawingArea = cIm
-                       , instanceDrawingArea = iIm
-                       , generalEquationDrawingArea = geIm
-                       , filledEquationDrawingArea = feIm
+                       , costImage = cIm
+                       , instanceImage = iIm
+                       , generalEquationImage = geIm
+                       , filledEquationImage = feIm
                        , mainWindow = mw
                        , quitButton = qb
                        }
 
 main = do
          elements <- makeGUI
-         mainGUI
+         Gtk.main
 
 setEntryKeyEvent :: GUIElements -> Entry -> IO ()
 setEntryKeyEvent elements entry = do
-    widgetSetState entry StateNormal
-    entry `on` keyReleaseEvent $ liftIO $ updateGUI elements >> return True
+    widgetSetStateFlags entry [StateFlagsNormal] True
+    onWidgetKeyReleaseEvent entry $ const $ updateGUI elements >> return True
     return ()
 
 drawingLimit :: Int
@@ -340,40 +350,35 @@ diagramTimes :: [(Int, Double)] -> Int -> Int -> Diagram B
 diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map (second toCost) inst
                       | k == 0 = cat (r2 (0, -1)) $ map (\(n, l) -> rulerw (w l) (n, l)) inst
                       | otherwise = cat (r2 (0, -1)) $ map (\(n, l) -> ruler (h l) (n, l)) inst
-    where w l = (max (logBase 2 l) 1) ^ p
-          h l = l^(k-1) * (max (logBase 2 l) 1) ^ p
-          toCost l = l ^ k * (max (logBase 2 l) 1) ^ p
+    where w l = max (logBase 2 l) 1 ^ p
+          h l = l^(k-1) * max (logBase 2 l) 1 ^ p
+          toCost l = l ^ k * max (logBase 2 l) 1 ^ p
 
-drawDiagram :: DrawingArea -> Diagram B -> IO ()
-drawDiagram area diagram = do
-    rect <- widgetGetAllocation area
-    drawWindow <- widgetGetParentWindow area
-    let opts = CairoOptions "aaa.png" sizeSpec RenderOnly False
-        Rectangle _ _ w h = rect
-        sizeSpec = mkSizeSpec2D (Just $ fromIntegral w) (Just $ fromIntegral h)
-        (_, renderDiagram) = renderDia Cairo opts $ frame 0.2 diagram
-        render = do
-           setSourceColor $ Color 65535 65535 65535
-           rectangle $ Rectangle 0 0 w h
-           Cairo.fill
-           renderDiagram
-    area `on` draw $ render
-    drawWindowInvalidateRect drawWindow rect True
+drawDiagramImage :: Image -> Diagram B -> IO ()
+drawDiagramImage image diagram = do
+    let w = 200
+        h = 100
+    let opts = RasterificOptions $ dims2D w h
+    putStrLn "Rendering"
+    print (w, h)
+    renderRasterific "aaa.png" (dims2D w h) diagram
+    imageSetFromFile image (Just "aaa.png")
     return ()
 
 readFromEntry :: Int -> Entry -> IO (Maybe Int)
 readFromEntry min entry = do
-    t <- entryGetText entry
+    t <- T.unpack <$> entryGetText entry
     let result = case reads t :: [(Int, String)] of
                       [(n, "")] -> if n >= min
                                    then Just n
                                    else Nothing
                       _ -> Nothing
-    widgetModifyFg entry StateNormal $ if isNothing result
-                                       then (Color 65535 0 0)
-                                       else (Color 0 0 0)
+    rgba <- newZeroRGBA
+    rGBAParse rgba $ if isNothing result
+                     then "red"
+                     else "black"
+    widgetOverrideColor entry [StateFlagsNormal] (Just rgba)
     return result
-
 
 
 updateGUI :: GUIElements -> IO ()
@@ -394,10 +399,10 @@ updateGUI elements = do
                                            diagramTimes inst k p
                         filledDiagram = hsep 0.2 [ myText "T(n) =", toDiagram $ filledEquation a b k p ]
                     in (costDiagram, instanceDiagrams, filledDiagram)
-    drawDiagram (costDrawingArea elements) costDiagram
-    drawDiagram (instanceDrawingArea elements) instanceDiagrams
+    drawDiagramImage (costImage elements) costDiagram
+    drawDiagramImage (instanceImage elements) instanceDiagrams
 
     let eqDiagram = hsep 0.2 [ myText "T(n) = ", toDiagram generalEquation ]
-    drawDiagram (generalEquationDrawingArea elements) eqDiagram
-    drawDiagram (filledEquationDrawingArea elements) filledDiagram
+    drawDiagramImage (generalEquationImage elements) eqDiagram
+    drawDiagramImage (filledEquationImage elements) filledDiagram
 
