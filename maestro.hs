@@ -47,7 +47,7 @@ import Data.Maybe(isNothing, fromJust)
 import Data.String(IsString(..))
 import Diagrams.Core.Compile(renderDia)
 import Diagrams.Backend.Rasterific(B, Options (RasterificOptions), Rasterific (Rasterific), renderRasterific)
-import Diagrams.Prelude hiding (after, set, Sum)
+import Diagrams.Prelude hiding (after, Box, set, Sum)
 import Data.Text(Text)
 import qualified Data.Text as T
 import GI.Gdk(Rectangle (Rectangle), newZeroRGBA, rGBAParse, windowInvalidateRect)
@@ -93,6 +93,7 @@ instance Num Expression where
     fromInteger = mkValInt . fromInteger
 
 instance Fractional Expression where
+    fromRational = mkValDouble . fromRational
     (/) = mkDiv
 
 instance Floating Expression where
@@ -161,6 +162,7 @@ toDiagram = cata go
         go (Pow d1 d2) = d1 ||| exponent d2
         go (PowLog d1 d2) = myText "log" ||| exponent d2 ||| paren d1
         go (Sum d1 d2) = d1 ||| myText "+" ||| d2
+        go (Diff d1 d2) = d1 ||| myText "-" ||| d2
         go (Prod d1 d2) = d1 ||| sep ||| d2
         go (Div d1 d2) = d1 ||| myText "/" ||| d2
         go (FuncApp d1 d2) = d1 ||| paren d2
@@ -219,9 +221,13 @@ data GUIElements = GUIElements { nEntry :: Entry
                                , bEntry :: Entry
                                , kEntry :: Entry
                                , pEntry :: Entry
+                               , costBox :: Box
                                , costImage :: Image
+                               , instanceBox :: Box
                                , instanceImage :: Image
+                               , generalEquationBox :: Box
                                , generalEquationImage :: Image
+                               , filledEquationBox :: Box
                                , filledEquationImage :: Image
                                , mainWindow :: Window
                                , quitButton :: Button
@@ -269,6 +275,9 @@ instance CanBeCast DrawingArea where
 instance CanBeCast Image where
     doCast = unsafeCastTo Image
 
+instance CanBeCast Box where
+    doCast = unsafeCastTo Box
+
 instance CanBeCast Window where
     doCast = unsafeCastTo Window
 
@@ -284,9 +293,13 @@ recoverElements builder = do
     ke <- getObject "kEntry"
     pe <- getObject "pEntry"
 
+    cB <- getObject "costBox"
     cIm <- getObject "costImage"
+    iB <- getObject "instanceBox"
     iIm <- getObject "instanceImage"
+    geB <- getObject "generalEquationBox"
     geIm <- getObject "generalEquationImage"
+    feB <- getObject "filledEquationBox"
     feIm <- getObject "filledEquationImage"
 
     qb <- getObject "quitButton"
@@ -298,9 +311,13 @@ recoverElements builder = do
                        , bEntry = be
                        , kEntry = ke
                        , pEntry = pe
+                       , costBox = cB
                        , costImage = cIm
+                       , instanceBox = iB
                        , instanceImage = iIm
+                       , generalEquationBox = geB
                        , generalEquationImage = geIm
+                       , filledEquationBox = feB
                        , filledEquationImage = feIm
                        , mainWindow = mw
                        , quitButton = qb
@@ -354,16 +371,14 @@ diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map 
           h l = l^(k-1) * max (logBase 2 l) 1 ^ p
           toCost l = l ^ k * max (logBase 2 l) 1 ^ p
 
-drawDiagramImage :: Image -> Diagram B -> IO ()
-drawDiagramImage image diagram = do
-    let w = 200
-        h = 100
-    let opts = RasterificOptions $ dims2D w h
-    putStrLn "Rendering"
-    print (w, h)
+drawDiagram :: Box -> Image -> Diagram B -> IO ()
+drawDiagram box image diagram = do
+    w <- fromIntegral <$> widgetGetAllocatedWidth box
+    h <- fromIntegral <$> widgetGetAllocatedHeight box
     renderRasterific "aaa.png" (dims2D w h) diagram
     imageSetFromFile image (Just "aaa.png")
     return ()
+
 
 readFromEntry :: Int -> Entry -> IO (Maybe Int)
 readFromEntry min entry = do
@@ -399,10 +414,11 @@ updateGUI elements = do
                                            diagramTimes inst k p
                         filledDiagram = hsep 0.2 [ myText "T(n) =", toDiagram $ filledEquation a b k p ]
                     in (costDiagram, instanceDiagrams, filledDiagram)
-    drawDiagramImage (costImage elements) costDiagram
-    drawDiagramImage (instanceImage elements) instanceDiagrams
+                _ -> error "Impossible"
+    drawDiagram (costBox elements) (costImage elements) costDiagram
+    drawDiagram (instanceBox elements) (instanceImage elements) instanceDiagrams
 
     let eqDiagram = hsep 0.2 [ myText "T(n) = ", toDiagram generalEquation ]
-    drawDiagramImage (generalEquationImage elements) eqDiagram
-    drawDiagramImage (filledEquationImage elements) filledDiagram
+    drawDiagram (generalEquationBox elements) (generalEquationImage elements) eqDiagram
+    drawDiagram (filledEquationBox elements) (filledEquationImage elements) filledDiagram
 
