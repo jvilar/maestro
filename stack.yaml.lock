@@ -3,66 +3,10 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages:
-- completed:
-    hackage: SVGFonts-1.7.0.1@sha256:1aac5ffd1a7c09317f92e9d31380d61eb96ce412b0dbd4e2d22c609c3d0be360,4039
-    pantry-tree:
-      size: 1836
-      sha256: 69e91027b97050991ce3a1f360a9a63ce90be8c3661a5c3db184536485e645cf
-  original:
-    hackage: SVGFonts-1.7.0.1@sha256:1aac5ffd1a7c09317f92e9d31380d61eb96ce412b0dbd4e2d22c609c3d0be360,4039
-- completed:
-    hackage: diagrams-core-1.5.0@sha256:eae2e82ad2e5ddbbfc9875067a0810dc4ebf35549ca6d0018a536d94b3aa7bf1,2973
-    pantry-tree:
-      size: 2018
-      sha256: 55a663e11c72359d0acedbc7e438f4cfbd5a9661525e464e2b42d746cbcd776d
-  original:
-    hackage: diagrams-core-1.5.0@sha256:eae2e82ad2e5ddbbfc9875067a0810dc4ebf35549ca6d0018a536d94b3aa7bf1,2973
-- completed:
-    hackage: diagrams-lib-1.4.4@sha256:1129be254377b926ce2e932113e4bd06256de878d163fbcbacacf1be97bdf3b0,8220
-    pantry-tree:
-      size: 11604
-      sha256: a96099f5e6e4c3236dd2c2dd301e5498a1dd4b968a05dcec144c46eb53e6d912
-  original:
-    hackage: diagrams-lib-1.4.4@sha256:1129be254377b926ce2e932113e4bd06256de878d163fbcbacacf1be97bdf3b0,8220
-- completed:
-    hackage: diagrams-rasterific-1.4.2.1@sha256:537148be9dd713d940779750f4f64f7b85f0e1340ba207a0414a49aba0b4a8ed,3202
-    pantry-tree:
-      size: 1387
-      sha256: 6232589931391502f06add397ea0859d40951f88bb40bceeddb6920ff2e2200a
-  original:
-    hackage: diagrams-rasterific-1.4.2.1@sha256:537148be9dd713d940779750f4f64f7b85f0e1340ba207a0414a49aba0b4a8ed,3202
-- completed:
-    hackage: active-0.2.0.15@sha256:22e235aefdd47121db743e138d309d7529b0eea545f9add8c113ce8f15ccf83e,1767
-    pantry-tree:
-      size: 1017
-      sha256: 6a85d5f65421c1cff60e19d84acd52d077a674212ed00cbc036b4dc68ebd72e3
-  original:
-    hackage: active-0.2.0.15@sha256:22e235aefdd47121db743e138d309d7529b0eea545f9add8c113ce8f15ccf83e,1767
-- completed:
-    hackage: dual-tree-0.2.3.0@sha256:bba5476c1cefc3802708a72ab22b5eab9e182cc065507f4a1f673ebdfc694bad,2884
-    pantry-tree:
-      size: 387
-      sha256: de4db590b1d73eaeb2c39b9cdea9b83f99adc81841b74da61548568b02143a52
-  original:
-    hackage: dual-tree-0.2.3.0@sha256:bba5476c1cefc3802708a72ab22b5eab9e182cc065507f4a1f673ebdfc694bad,2884
-- completed:
-    hackage: monoid-extras-0.6@sha256:fabcab0a59ac48d8f271016cf8190b21969b202c760df2db85add2fef93d38b4,2197
-    pantry-tree:
-      size: 1187
-      sha256: b07d7eef465c7cbc2f5c8368ef98b8a746166cb6953c1f51643f9fba6ead99e0
-  original:
-    hackage: monoid-extras-0.6@sha256:fabcab0a59ac48d8f271016cf8190b21969b202c760df2db85add2fef93d38b4,2197
-- completed:
-    hackage: gtk2hs-buildtools-0.13.8.1@sha256:78e0dc8e3ae2d3ebe01d8d65e5f3f463102ea13a66be6bb1bff7a20a3d93486d,5238
-    pantry-tree:
-      size: 3588
-      sha256: c717359176b03949bd1a3200eeab459bc83d5f32a1028baa66802dbab5ee5a05
-  original:
-    hackage: gtk2hs-buildtools-0.13.8.1@sha256:78e0dc8e3ae2d3ebe01d8d65e5f3f463102ea13a66be6bb1bff7a20a3d93486d,5238
+packages: []
 snapshots:
 - completed:
-    size: 586268
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/13.yaml
-    sha256: d9e658a22cfe8d87a64fdf219885f942fef5fe2bcb156a9800174911c5da2443
-  original: lts-18.13
+    sha256: 6d1532d40621957a25bad5195bfca7938e8a06d923c91bc52aa0f3c41181f2d4
+    size: 619204
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/19/33.yaml
+  original: lts-19.33

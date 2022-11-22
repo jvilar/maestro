@@ -1,10 +1,9 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE LambdaCase #-}
 
 {-
 Copyright Juan Miguel Vilar Torres (c) 2018
@@ -50,7 +49,7 @@ import Diagrams.Backend.Rasterific(B, Options (RasterificOptions), Rasterific (R
 import Diagrams.Prelude hiding (after, Box, set, Sum)
 import Data.Text(Text)
 import qualified Data.Text as T
-import GI.Gdk(Rectangle (Rectangle), newZeroRGBA, rGBAParse, windowInvalidateRect)
+import GI.Gdk(Rectangle (Rectangle), newZeroRGBA, rGBAParse, windowInvalidateRect, getRectangleX, clearDeviceSeat)
 import GI.Gdk.Structs.Rectangle(getRectangleWidth, getRectangleHeight)
 import qualified GI.Gtk as Gtk
 import GI.Gtk hiding (main)
@@ -204,16 +203,26 @@ cost a b k p | a < b ^ k = "n" ** k' * log "n" ** p'
                    k' = fromIntegral k
                    p' = fromIntegral p
 
-generalEquation :: Expression
-generalEquation = "a" * mkFuncApp "T" ("n"/"b") + mkFuncApp "O" ("n" ** "k" * mkLog "n" ** "p")
+generalEquation :: Int -> Expression
+generalEquation 0 = "a" * mkFuncApp "T" ("n"/"b") + mkFuncApp "O" ("n" ** "k")
+generalEquation _ = "a" * mkFuncApp "T" ("n"/"b") + mkFuncApp "O" ("n" ** "k" * mkLog "n" ** "p")
 
 filledEquation :: Int -> Int -> Int -> Int -> Expression
 filledEquation a b k p = simplify $ fromIntegral a * mkFuncApp "T" ("n"/fromIntegral b) + mkFuncApp "O" ("n" ** fromIntegral k * mkLog "n" ** fromIntegral p)
 
+iniN :: Int
 iniN = 16
+
+iniA :: Int
 iniA = 2
+
+iniB :: Int
 iniB = 2
+
+iniK :: Int
 iniK = 1
+
+iniP :: Int
 iniP = 0
 
 data GUIElements = GUIElements { nEntry :: Entry
@@ -253,10 +262,11 @@ makeGUI = do
         entrySetText entry $ tshow ini
 
     onWidgetDestroy (mainWindow elements) mainQuit
-    onButtonActivate (quitButton elements) mainQuit
+    onButtonClicked (quitButton elements) mainQuit
 
     widgetShowAll $ mainWindow elements
-    onWidgetSizeAllocate (mainWindow elements) $ const $ updateGUI elements
+    onWidgetSizeAllocate (mainWindow elements) $ const $ clearImages elements
+    afterWidgetSizeAllocate (mainWindow elements) $ const $ updateGUI elements
 
     return elements
 
@@ -371,6 +381,9 @@ diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map 
           h l = l^(k-1) * max (logBase 2 l) 1 ^ p
           toCost l = l ^ k * max (logBase 2 l) 1 ^ p
 
+clearDiagram :: Image -> IO ()
+clearDiagram image = imageSetFromFile image Nothing
+
 drawDiagram :: Box -> Image -> Diagram B -> IO ()
 drawDiagram box image diagram = do
     w <- fromIntegral <$> widgetGetAllocatedWidth box
@@ -396,6 +409,12 @@ readFromEntry min entry = do
     return result
 
 
+clearImages :: GUIElements -> IO ()
+clearImages  elements = do
+    clearDiagram $ costImage elements
+    clearDiagram $ instanceImage elements
+
+
 updateGUI :: GUIElements -> IO ()
 updateGUI elements = do
     l <- mapM (\(e, m) -> readFromEntry m $ e elements)
@@ -415,10 +434,31 @@ updateGUI elements = do
                         filledDiagram = hsep 0.2 [ myText "T(n) =", toDiagram $ filledEquation a b k p ]
                     in (costDiagram, instanceDiagrams, filledDiagram)
                 _ -> error "Impossible"
+    clearDiagram $ costImage elements
+    showSize (costBox elements) "costBox"
+    widgetGetParent (costBox elements) >>= \case
+        Nothing -> return ()
+        Just p -> showSize p "parent of costBox"
+    showSize (instanceBox elements) "instanceBox"
+    showSize (generalEquationBox elements) "generalEquationBox"
+    showSize (mainWindow elements) "mainWindow"
+
     drawDiagram (costBox elements) (costImage elements) costDiagram
     drawDiagram (instanceBox elements) (instanceImage elements) instanceDiagrams
 
-    let eqDiagram = hsep 0.2 [ myText "T(n) = ", toDiagram generalEquation ]
+    eqDiagram <- let
+                    eq p = hsep 0.2 [ myText "T(n) = ", toDiagram $ generalEquation p ]
+                 in readFromEntry 0 (pEntry elements) >>= \case Nothing -> return $ eq 1
+                                                                Just p -> return $ eq p
+
     drawDiagram (generalEquationBox elements) (generalEquationImage elements) eqDiagram
     drawDiagram (filledEquationBox elements) (filledEquationImage elements) filledDiagram
 
+showSize _ _ = return ()
+-- showSize widget name = do
+--       rect <- widgetGetClip widget
+--       w <- getRectangleWidth rect
+--       h <- getRectangleHeight rect
+--       -- w <- widgetGetAllocatedWidth widget
+--       -- h <- widgetGetAllocatedHeight widget
+--       putStrLn $ "Size of " <> name <> ": " <> show w <> " x " <> show h

@@ -1,14 +1,11 @@
-resolver: lts-18.13
+resolver: lts-19.33
+
+nix:
+  enable: true
+  packages:
+    - pkg-config
+    - gobject-introspection
+    - gtk3
 
 allow-newer: true
-
-extra-deps:
-- SVGFonts-1.7.0.1@sha256:1aac5ffd1a7c09317f92e9d31380d61eb96ce412b0dbd4e2d22c609c3d0be360,4039
-- diagrams-core-1.5.0@sha256:eae2e82ad2e5ddbbfc9875067a0810dc4ebf35549ca6d0018a536d94b3aa7bf1,2973
-- diagrams-lib-1.4.4@sha256:1129be254377b926ce2e932113e4bd06256de878d163fbcbacacf1be97bdf3b0,8220
-- diagrams-rasterific-1.4.2.1@sha256:537148be9dd713d940779750f4f64f7b85f0e1340ba207a0414a49aba0b4a8ed,3202
-- active-0.2.0.15@sha256:22e235aefdd47121db743e138d309d7529b0eea545f9add8c113ce8f15ccf83e,1767
-- dual-tree-0.2.3.0@sha256:bba5476c1cefc3802708a72ab22b5eab9e182cc065507f4a1f673ebdfc694bad,2884
-- monoid-extras-0.6@sha256:fabcab0a59ac48d8f271016cf8190b21969b202c760df2db85add2fef93d38b4,2197
-- gtk2hs-buildtools-0.13.8.1@sha256:78e0dc8e3ae2d3ebe01d8d65e5f3f463102ea13a66be6bb1bff7a20a3d93486d,5238
 
