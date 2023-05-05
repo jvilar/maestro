@@ -16,8 +16,9 @@ executables:
   maestro:
     main:             maestro.hs
     dependencies:
-    - diagrams-rasterific
+    - diagrams-cairo
     - diagrams-core
+    - diagrams-gi-gtk
     - diagrams-lib
     - haskell-gi-base
     - gi-gdk

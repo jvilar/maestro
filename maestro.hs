@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE LambdaCase #-}
 
 {-
@@ -45,7 +46,8 @@ import Control.Monad.Reader(liftIO)
 import Data.Maybe(isNothing, fromJust)
 import Data.String(IsString(..))
 import Diagrams.Core.Compile(renderDia)
-import Diagrams.Backend.Rasterific(B, Options (RasterificOptions), Rasterific (Rasterific), renderRasterific)
+import Diagrams.Backend.Cairo(B)
+import Diagrams.Backend.GIGtk
 import Diagrams.Prelude hiding (after, Box, set, Sum)
 import Data.Text(Text)
 import qualified Data.Text as T
@@ -230,14 +232,10 @@ data GUIElements = GUIElements { nEntry :: Entry
                                , bEntry :: Entry
                                , kEntry :: Entry
                                , pEntry :: Entry
-                               , costBox :: Box
-                               , costImage :: Image
-                               , instanceBox :: Box
-                               , instanceImage :: Image
-                               , generalEquationBox :: Box
-                               , generalEquationImage :: Image
-                               , filledEquationBox :: Box
-                               , filledEquationImage :: Image
+                               , costDrawingArea :: DrawingArea
+                               , instanceDrawingArea :: DrawingArea
+                               , generalEquationDrawingArea :: DrawingArea
+                               , filledEquationDrawingArea :: DrawingArea
                                , mainWindow :: Window
                                , quitButton :: Button
                                }
@@ -264,10 +262,12 @@ makeGUI = do
     onWidgetDestroy (mainWindow elements) mainQuit
     onButtonClicked (quitButton elements) mainQuit
 
-    widgetShowAll $ mainWindow elements
-    onWidgetSizeAllocate (mainWindow elements) $ const $ clearImages elements
-    afterWidgetSizeAllocate (mainWindow elements) $ const $ updateGUI elements
+    forM_ [(costDrawingArea, costDiagram), (instanceDrawingArea, instanceDiagram),
+          (generalEquationDrawingArea, generalDiagram), (filledEquationDrawingArea, filledDiagram)]
+          $ \(drawingArea, diagram) ->
+             on (drawingArea elements) #draw $ drawDiagram (drawingArea elements) (diagram elements)
 
+    widgetShowAll $ mainWindow elements
     return elements
 
 class GObject a => CanBeCast a where
@@ -303,14 +303,10 @@ recoverElements builder = do
     ke <- getObject "kEntry"
     pe <- getObject "pEntry"
 
-    cB <- getObject "costBox"
-    cIm <- getObject "costImage"
-    iB <- getObject "instanceBox"
-    iIm <- getObject "instanceImage"
-    geB <- getObject "generalEquationBox"
-    geIm <- getObject "generalEquationImage"
-    feB <- getObject "filledEquationBox"
-    feIm <- getObject "filledEquationImage"
+    cDa <- getObject "costDrawingArea"
+    iDa <- getObject "instanceDrawingArea"
+    geDa <- getObject "generalEquationDrawingArea"
+    feDa <- getObject "filledEquationDrawingArea"
 
     qb <- getObject "quitButton"
 
@@ -321,14 +317,10 @@ recoverElements builder = do
                        , bEntry = be
                        , kEntry = ke
                        , pEntry = pe
-                       , costBox = cB
-                       , costImage = cIm
-                       , instanceBox = iB
-                       , instanceImage = iIm
-                       , generalEquationBox = geB
-                       , generalEquationImage = geIm
-                       , filledEquationBox = feB
-                       , filledEquationImage = feIm
+                       , costDrawingArea = cDa
+                       , instanceDrawingArea = iDa
+                       , generalEquationDrawingArea = geDa
+                       , filledEquationDrawingArea = feDa
                        , mainWindow = mw
                        , quitButton = qb
                        }
@@ -340,7 +332,13 @@ main = do
 setEntryKeyEvent :: GUIElements -> Entry -> IO ()
 setEntryKeyEvent elements entry = do
     widgetSetStateFlags entry [StateFlagsNormal] True
-    onWidgetKeyReleaseEvent entry $ const $ updateGUI elements >> return True
+    onWidgetKeyReleaseEvent entry $ const $ do
+        mapM_ (widgetQueueDraw . ($ elements))
+            [ costDrawingArea
+            , instanceDrawingArea
+            , generalEquationDrawingArea
+            , filledEquationDrawingArea ]
+        return True
     return ()
 
 drawingLimit :: Int
@@ -381,16 +379,18 @@ diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map 
           h l = l^(k-1) * max (logBase 2 l) 1 ^ p
           toCost l = l ^ k * max (logBase 2 l) 1 ^ p
 
-clearDiagram :: Image -> IO ()
-clearDiagram image = imageSetFromFile image Nothing
-
-drawDiagram :: Box -> Image -> Diagram B -> IO ()
-drawDiagram box image diagram = do
-    w <- fromIntegral <$> widgetGetAllocatedWidth box
-    h <- fromIntegral <$> widgetGetAllocatedHeight box
-    renderRasterific "aaa.png" (dims2D w h) diagram
-    imageSetFromFile image (Just "aaa.png")
-    return ()
+drawDiagram :: DrawingArea -> IO (Diagram B) -> WidgetDrawCallback
+drawDiagram drawingArea diagram context = do
+    wDr <- fromIntegral <$> widgetGetAllocatedWidth drawingArea
+    hDr <- fromIntegral <$> widgetGetAllocatedHeight drawingArea
+    dia <- diagram
+    let
+      wdia = width dia
+      hdia = width dia
+      spec = mkSizeSpec2D (Just $ fromIntegral wDr) (Just $ fromIntegral hDr)
+      scaledDia = toGtkCoords $ transform (requiredScaling spec (V2 wdia hdia)) dia
+    renderToGtk context True scaledDia
+    return True
 
 
 readFromEntry :: Int -> Entry -> IO (Maybe Int)
@@ -409,56 +409,42 @@ readFromEntry min entry = do
     return result
 
 
-clearImages :: GUIElements -> IO ()
-clearImages  elements = do
-    clearDiagram $ costImage elements
-    clearDiagram $ instanceImage elements
-
-
-updateGUI :: GUIElements -> IO ()
-updateGUI elements = do
+readEntries :: GUIElements -> IO (Maybe [Int])
+readEntries elements = do
     l <- mapM (\(e, m) -> readFromEntry m $ e elements)
               [ (aEntry, 1), (bEntry, 2), (nEntry, 1), (kEntry, 0), (pEntry, 0) ]
+    return $ sequence l
 
-    let (costDiagram, instanceDiagrams, filledDiagram) =
-             case sequence l of
-                Nothing -> (myText "Error", strutY 2, myText "Error")
-                Just [a, b, n, k, p] ->
-                    let inst = instances n a b
-                        costDiagram = hsep 0.2 [ myText "O(", toDiagram $ simplify $ cost a b k p, myText ")"]
-                        instanceDiagrams = diagramInstances inst
-                                           ===
-                                           strutY 2
-                                           ===
-                                           diagramTimes inst k p
-                        filledDiagram = hsep 0.2 [ myText "T(n) =", toDiagram $ filledEquation a b k p ]
-                    in (costDiagram, instanceDiagrams, filledDiagram)
-                _ -> error "Impossible"
-    clearDiagram $ costImage elements
-    showSize (costBox elements) "costBox"
-    widgetGetParent (costBox elements) >>= \case
-        Nothing -> return ()
-        Just p -> showSize p "parent of costBox"
-    showSize (instanceBox elements) "instanceBox"
-    showSize (generalEquationBox elements) "generalEquationBox"
-    showSize (mainWindow elements) "mainWindow"
+costDiagram :: GUIElements -> IO (Diagram B)
+costDiagram elements = do
+    readEntries elements <&> (\case
+        Nothing -> myText "Error"
+        Just [a, b, _, k, p] -> hsep 0.2 [ myText "O(", toDiagram $ simplify $ cost a b k p, myText ")"]
+        _ -> error "Impossible")
 
-    drawDiagram (costBox elements) (costImage elements) costDiagram
-    drawDiagram (instanceBox elements) (instanceImage elements) instanceDiagrams
+instanceDiagram :: GUIElements -> IO (Diagram B)
+instanceDiagram elements = do
+    readEntries elements <&> (\case
+        Nothing -> myText "Error"
+        Just [a, b, n, k, p] -> let inst = instances n a b
+                                in diagramInstances inst
+                                   ===
+                                   strutY 2
+                                   ===
+                                   diagramTimes inst k p
+        _ -> error "Impossible")
 
-    eqDiagram <- let
-                    eq p = hsep 0.2 [ myText "T(n) = ", toDiagram $ generalEquation p ]
-                 in readFromEntry 0 (pEntry elements) >>= \case Nothing -> return $ eq 1
-                                                                Just p -> return $ eq p
+filledDiagram :: GUIElements -> IO (Diagram B)
+filledDiagram elements = do
+    readEntries elements <&> (\case
+        Nothing -> myText "Error"
+        Just [a, b, _, k, p] -> hsep 0.2 [ myText "T(n) =", toDiagram $ filledEquation a b k p]
+        _ -> error "Impossible")
 
-    drawDiagram (generalEquationBox elements) (generalEquationImage elements) eqDiagram
-    drawDiagram (filledEquationBox elements) (filledEquationImage elements) filledDiagram
+generalDiagram :: GUIElements -> IO (Diagram B)
+generalDiagram elements = do
+    readEntries elements <&> (\case
+        Nothing -> myText "Error"
+        Just [_, _, _, _, p] -> hsep 0.2 [ myText "T(n) =", toDiagram $ generalEquation p]
+        _ -> error "Impossible")
 
-showSize _ _ = return ()
--- showSize widget name = do
---       rect <- widgetGetClip widget
---       w <- getRectangleWidth rect
---       h <- getRectangleHeight rect
---       -- w <- widgetGetAllocatedWidth widget
---       -- h <- widgetGetAllocatedHeight widget
---       putStrLn $ "Size of " <> name <> ": " <> show w <> " x " <> show h
