@@ -386,7 +386,7 @@ drawDiagram drawingArea diagram context = do
     dia <- diagram
     let
       wdia = width dia
-      hdia = width dia
+      hdia = height dia
       spec = mkSizeSpec2D (Just $ fromIntegral wDr) (Just $ fromIntegral hDr)
       scaledDia = toGtkCoords $ transform (requiredScaling spec (V2 wdia hdia)) dia
     renderToGtk context True scaledDia
