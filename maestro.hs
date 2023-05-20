@@ -387,8 +387,12 @@ drawDiagram drawingArea diagram context = do
     let
       wdia = width dia
       hdia = height dia
+      ratio = fromIntegral wDr / fromIntegral hDr
+      hEnvelope = max hdia (wdia / ratio)
+      wEnvelope = max (hEnvelope * ratio) wdia
+      enveloped = dia # center # withEnvelope (rect wEnvelope hEnvelope :: D V2 Double)
       spec = mkSizeSpec2D (Just $ fromIntegral wDr) (Just $ fromIntegral hDr)
-      scaledDia = toGtkCoords $ transform (requiredScaling spec (V2 wdia hdia)) dia
+      scaledDia = toGtkCoords $ transform (requiredScaling spec (V2 wEnvelope hEnvelope)) enveloped
     renderToGtk context True scaledDia
     return True
 
