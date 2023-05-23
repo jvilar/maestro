@@ -413,22 +413,22 @@ readFromEntry min entry = do
     return result
 
 
-readEntries :: GUIElements -> IO (Maybe [Int])
-readEntries elements = do
-    l <- mapM (\(e, m) -> readFromEntry m $ e elements)
-              [ (aEntry, 1), (bEntry, 2), (nEntry, 1), (kEntry, 0), (pEntry, 0) ]
+readEntries :: GUIElements -> [(GUIElements -> Entry, Int)] -> IO (Maybe [Int])
+readEntries elements request = do
+    l <- mapM (\(e, m) -> readFromEntry m $ e elements) request
     return $ sequence l
 
 costDiagram :: GUIElements -> IO (Diagram B)
 costDiagram elements = do
-    readEntries elements <&> (\case
+    readEntries elements [(aEntry, 1), (bEntry, 2), (kEntry, 0), (pEntry, 0)] <&> (\case
         Nothing -> myText "Error"
-        Just [a, b, _, k, p] -> hsep 0.2 [ myText "O(", toDiagram $ simplify $ cost a b k p, myText ")"]
+        Just [a, b, k, p] -> hsep 0.2 [ myText "O(", toDiagram $ simplify $ cost a b k p, myText ")"]
         _ -> error "Impossible")
 
 instanceDiagram :: GUIElements -> IO (Diagram B)
 instanceDiagram elements = do
-    readEntries elements <&> (\case
+    readEntries elements [ (aEntry, 1), (bEntry, 2), (nEntry, 1), (kEntry, 0), (pEntry, 0) ]
+      <&> (\case
         Nothing -> myText "Error"
         Just [a, b, n, k, p] -> let inst = instances n a b
                                 in diagramInstances inst
@@ -440,15 +440,15 @@ instanceDiagram elements = do
 
 filledDiagram :: GUIElements -> IO (Diagram B)
 filledDiagram elements = do
-    readEntries elements <&> (\case
+    readEntries elements [(aEntry, 1), (bEntry, 2), (kEntry, 0), (pEntry, 0)] <&> (\case
         Nothing -> myText "Error"
-        Just [a, b, _, k, p] -> hsep 0.2 [ myText "T(n) =", toDiagram $ filledEquation a b k p]
+        Just [a, b, k, p] -> hsep 0.2 [ myText "T(n) =", toDiagram $ filledEquation a b k p]
         _ -> error "Impossible")
 
 generalDiagram :: GUIElements -> IO (Diagram B)
 generalDiagram elements = do
-    readEntries elements <&> (\case
+    readEntries elements [(pEntry, 0)] <&> (\case
         Nothing -> myText "Error"
-        Just [_, _, _, _, p] -> hsep 0.2 [ myText "T(n) =", toDiagram $ generalEquation p]
+        Just [p] -> hsep 0.2 [ myText "T(n) =", toDiagram $ generalEquation p]
         _ -> error "Impossible")
 
