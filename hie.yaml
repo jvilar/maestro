@@ -1,5 +1,8 @@
 cradle:
   stack:
+    - path: "./lib"
+      component: "maestro:lib"
+
     - path: "././maestro.hs"
       component: "maestro:exe:maestro"
 

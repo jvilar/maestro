@@ -12,10 +12,11 @@ data-files:
 dependencies:
 - base >= 4.7 && < 5
 
-executables:
-  maestro:
-    main:             maestro.hs
-    dependencies:
+library:
+  source-dirs: lib
+  ghc-options:
+    - -Wall
+  dependencies:
     - diagrams-cairo
     - diagrams-core
     - diagrams-gi-gtk
@@ -25,4 +26,12 @@ executables:
     - gi-gtk
     - mtl
     - SVGFonts
+    - text
+
+executables:
+  maestro:
+    main:             maestro.hs
+    dependencies:
+    - gi-gtk
+    - maestro
     - text
