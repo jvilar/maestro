@@ -228,7 +228,7 @@ diagramInstances size a b
                     # connect
       where child = diagramInstances (size / fromIntegral b) a b
             root = node size 1 # centerXY # named (0 :: Int, size)
-            node l h  = rect l h # lc black # lwG 0.9
+            node l h  = rect l h # lc black # lwO 0.9
             arrowStyle = with & headLength .~ local 0.17 & shaftStyle %~ lwO 0.4
             connect :: Diagram B -> Diagram B
             connect = withName (0 :: Int, size) (\r ->

@@ -29,9 +29,23 @@ library:
     - text
 
 executables:
+  callTree:
+    main: callTree.hs
+    dependencies:
+      - maestro
+      - diagrams-cairo
+
+  costDiagram:
+    main: costDiagram.hs
+    dependencies:
+      - maestro
+      - diagrams-cairo
+      - diagrams-lib
+
   maestro:
     main:             maestro.hs
     dependencies:
     - gi-gtk
     - maestro
     - text
+
