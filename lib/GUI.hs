@@ -238,17 +238,27 @@ costDiagram elements = do
         Just [a, b, k, p] -> hsep 0.2 [ myText "O(", toDiagram $ simplify $ cost a b k p, myText ")"]
         _ -> error "Impossible")
 
+drawingLimit :: Int
+drawingLimit = 500
+
 instanceDiagram :: GUIElements -> IO (Diagram B)
 instanceDiagram elements = do
     readEntries elements [ (aEntry, 1), (bEntry, 2), (nEntry, 1), (kEntry, 0), (pEntry, 0) ]
       <&> (\case
         Nothing -> myText "Error"
         Just [a, b, n, k, p] -> let inst = instances n a b
-                                in diagramInstances inst
-                                   ===
-                                   strutY 2
-                                   ===
-                                   diagramTimes inst k p
+                                    toCost l = l ^ k * max (logBase 2 l) 1 ^ p
+                                in if sum (map fst inst) > drawingLimit
+                                   then valuesDiagram inst
+                                        ===
+                                        strutY 2
+                                        ===
+                                        valuesDiagram (map (second toCost) inst)
+                                   else diagramInstances (fromIntegral n) a b # centerXY
+                                        ===
+                                        strutY 2
+                                        ===
+                                        diagramTimes inst k p # centerXY
         _ -> error "Impossible")
 
 filledDiagram :: GUIElements -> IO (Diagram B)

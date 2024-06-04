@@ -43,6 +43,7 @@ module Model (
     cost,
     diagramInstances,
     diagramTimes,
+    valuesDiagram,
     filledEquation,
     generalEquation,
     instances,
@@ -215,12 +216,47 @@ generalEquation _ = "a" * mkFuncApp "T" ("n"/"b") + mkFuncApp "O" ("n" ** "k" * 
 filledEquation :: Int -> Int -> Int -> Int -> Expression
 filledEquation a b k p = simplify $ fromIntegral a * mkFuncApp "T" ("n"/fromIntegral b) + mkFuncApp "O" ("n" ** fromIntegral k * mkLog "n" ** fromIntegral p)
 
-drawingLimit :: Int
-drawingLimit = 500
 
-diagramInstances :: [(Int, Double)] -> Diagram B
-diagramInstances inst | sum (map fst inst) <= drawingLimit  = cat (r2 (0, -1)) $ map (ruler 1) inst
-                      | otherwise = valuesDiagram inst
+diagramInstances :: Double -> Int -> Int -> Diagram B
+diagramInstances size a b
+  | size <= 1 = node 1 1
+  | otherwise = (root
+                ===
+                strutY 0.5
+                ===
+                cat (r2 (1, 0)) (zipWith (\n -> frame 0.2 . named n) [(i, size) | i <- [(1::Int)..]] $ replicate a child) # centerXY)
+                    # connect
+      where child = diagramInstances (size / fromIntegral b) a b
+            root = node size 1 # centerXY # named (0 :: Int, size)
+            node l h  = rect l h # lc black # lwG 0.9
+            arrowStyle = with & headLength .~ local 0.17 & shaftStyle %~ lwO 0.4
+            connect :: Diagram B -> Diagram B
+            connect = withName (0 :: Int, size) (\r ->
+                                  applyAll (zipWith (\b i ->
+                                                      withName (i, size)
+                                                      (\c -> atop (arrowBetween' arrowStyle b (topAnchor c))))
+                                            (bottomAnchors a r) [1..a]))
+
+topAnchor :: (InSpace V2 n a, Enveloped a) => a -> Point V2 n
+topAnchor d = p2 (x, y)
+    where x = case extentX d of
+                 Just (x1, x2) -> (x1 + x2) / 2
+                 Nothing -> 0
+          y = case extentY d of
+                 Just (_, y2) -> y2
+                 Nothing -> 0
+
+bottomAnchors :: (InSpace V2 n a, Enveloped a) => Int -> a -> [Point V2 n]
+bottomAnchors n d = [ p2 (x, y) | i <- [1..n], let x = x0 + fromIntegral i * dx, let y = y0 ]
+    where x0 = case extentX d of
+                 Just (x1, _) -> x1
+                 Nothing -> 0
+          y0 = case extentY d of
+                 Just (y1, _) -> y1
+                 Nothing -> 0
+          dx = case extentX d of
+                 Just (x1, x2) -> (x2 - x1) / fromIntegral (n + 1)
+                 Nothing -> 0
 
 valuesDiagram :: [(Int, Double)] -> Diagram B
 valuesDiagram values = cat (r2 (0, -1)) $ map (frame 0.2 . scale 0.8) $ map pairDiagram values ++ [ totalDiagram values ]
@@ -246,7 +282,7 @@ rulerw :: Double -> (Int, Double) -> Diagram B
 rulerw w (n, l) = cat (r2 (1, 0)) $ replicate n (rect w 1 # translate (r2 (w/2, -1/2))) # lc black # lwO 0.5
 
 diagramTimes :: [(Int, Double)] -> Int -> Int -> Diagram B
-diagramTimes inst k p | sum (map fst inst) > drawingLimit = valuesDiagram $ map (second toCost) inst
+diagramTimes inst k p -- sum (map fst inst) > drawingLimit = valuesDiagram $ map (second toCost) inst
                       | k == 0 = cat (r2 (0, -1)) $ map (\(n, l) -> rulerw (w l) (n, l)) inst
                       | otherwise = cat (r2 (0, -1)) $ map (\(n, l) -> ruler (h l) (n, l)) inst
     where w l = max (logBase 2 l) 1 ^ p
