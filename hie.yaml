@@ -3,6 +3,18 @@ cradle:
     - path: "./lib"
       component: "maestro:lib"
 
+    - path: "././callTree.hs"
+      component: "maestro:exe:callTree"
+
+    - path: "././Paths_maestro.hs"
+      component: "maestro:exe:callTree"
+
+    - path: "././costDiagram.hs"
+      component: "maestro:exe:costDiagram"
+
+    - path: "././Paths_maestro.hs"
+      component: "maestro:exe:costDiagram"
+
     - path: "././maestro.hs"
       component: "maestro:exe:maestro"
 

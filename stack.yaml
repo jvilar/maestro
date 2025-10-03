@@ -1,14 +1,16 @@
-resolver: lts-22.26
+resolver: lts-23.27
 
 nix:
   enable: true
   packages:
     - gobject-introspection
     - gtk3
+    - lerc
     - libdatrie
     - libepoxy
     - libselinux
     - libsepol
+    - libsysprof-capture
     - libthai
     - libxkbcommon
     - pcre2

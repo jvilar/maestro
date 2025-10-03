@@ -43,8 +43,9 @@ module GUI (makeGUI) where
 
 import Control.Applicative((<*>),(<$>))
 import Control.Arrow(second)
-import Control.Monad(forM_, forM)
+import Control.Monad(forM_, forM, when)
 import Control.Monad.Reader(liftIO)
+import Data.Bits((.&.))
 import Data.Maybe(isNothing, fromJust)
 import Data.String(IsString(..))
 import Diagrams.Core.Compile(renderDia)
@@ -53,8 +54,9 @@ import Diagrams.Backend.GIGtk
 import Diagrams.Prelude hiding (after, Box, set, Sum)
 import Data.Text(Text)
 import qualified Data.Text as T
-import GI.Gdk(Rectangle (Rectangle), newZeroRGBA, rGBAParse, windowInvalidateRect, getRectangleX, clearDeviceSeat)
+import GI.Gdk(screenGetDefault, Rectangle (Rectangle), newZeroRGBA, rGBAParse, windowInvalidateRect, getRectangleX, clearDeviceSeat)
 import GI.Gdk.Structs.Rectangle(getRectangleWidth, getRectangleHeight)
+import qualified GI.Gdk as Gdk
 import qualified GI.Gtk as Gtk
 import GI.Gtk hiding (main)
 import GI.Gtk.Flags(StateFlags(..))
@@ -100,9 +102,33 @@ iniK = 1
 iniP :: Int
 iniP = 0
 
+loadCSS :: Text -> IO ()
+loadCSS filePath = do
+    provider <- Gtk.new Gtk.CssProvider []
+    #loadFromPath provider filePath
+    maybeScreen <- screenGetDefault
+    case maybeScreen of
+      Nothing -> return ()
+      Just screen -> Gtk.styleContextAddProviderForScreen screen provider (fromIntegral Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+preprareQuit :: GUIElements -> IO ()
+preprareQuit elements = do
+    onWidgetDestroy (mainWindow elements) mainQuit
+    onButtonClicked (quitButton elements) mainQuit
+    _ <- on (mainWindow elements) #keyPressEvent $ \event -> do
+        keyval <- Gdk.getEventKeyKeyval event
+        modifiers <- Gdk.getEventKeyState event
+        let isCtrl = Gdk.ModifierTypeControlMask `elem` modifiers
+        when (isCtrl && keyval == Gdk.KEY_q) mainQuit
+        return False
+    return ()
+
+
 makeGUI :: IO GUIElements
 makeGUI = do
     Gtk.init Nothing
+    cssfn <- getDataFileName "maestro.css"
+    loadCSS $ T.pack cssfn
 
     gladefn <- getDataFileName "maestro.glade"
     builder <- builderNewFromFile $ T.pack gladefn
@@ -114,8 +140,7 @@ makeGUI = do
     forM_ (zip entries [iniN, iniA, iniB, iniK, iniP]) $ \(entry, ini) ->
         entrySetText entry $ tshow ini
 
-    onWidgetDestroy (mainWindow elements) mainQuit
-    onButtonClicked (quitButton elements) mainQuit
+    preprareQuit elements
 
     forM_ [(costDrawingArea, costDiagram), (instanceDrawingArea, instanceDiagram),
           (generalEquationDrawingArea, generalDiagram), (filledEquationDrawingArea, filledDiagram)]

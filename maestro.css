@@ -1,0 +1,12 @@
+/* styles for the maestro program */
+.label {
+    font-size: 18pt;
+    font-weight: bold;
+}
+.small-label {
+    font-size: 14pt;
+    font-weight: bold;
+}
+.entry {
+    font-size: 18pt;
+}
